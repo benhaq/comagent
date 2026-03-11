@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "skills": {
+    "cmk:adr": {
+      "source": "CommandOSSLabs/ai-devkit",
+      "sourceType": "github",
+      "computedHash": "7c026a408e841a6b9826378a015283ac21673a9f0f52921e3440b01db5a0038b"
+    },
+    "cmk:codebase-summary": {
+      "source": "CommandOSSLabs/ai-devkit",
+      "sourceType": "github",
+      "computedHash": "43f0f8066e461508bd97c1e4df8f7a2006783cb6698ad65ec80bd26debf8790d"
+    },
+    "cmk:docs": {
+      "source": "CommandOSSLabs/ai-devkit",
+      "sourceType": "github",
+      "computedHash": "cb91bc52b7ee1d158aa09eb24d1bb66deb1790b021b64520a132fa7a33c228b0"
+    },
+    "cmk:feature-spec": {
+      "source": "CommandOSSLabs/ai-devkit",
+      "sourceType": "github",
+      "computedHash": "54ed757b6e524953bc577c4df8af02518d178996cbd0d220f707de3b8f191763"
+    },
+    "cmk:prd": {
+      "source": "CommandOSSLabs/ai-devkit",
+      "sourceType": "github",
+      "computedHash": "18ff3182bdab24dc19815310b931fbad4a7e29dca6965578e873dcf4e3b48de1"
+    },
+    "cmk:system-design": {
+      "source": "CommandOSSLabs/ai-devkit",
+      "sourceType": "github",
+      "computedHash": "634acf24ac26e9474444e07866f9433ff3808c127eab88e99dd0a250c052398a"
+    }
+  }
+}

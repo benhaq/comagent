@@ -44,3 +44,10 @@ We keep all important docs in `./docs` folder and keep updating them, structure 
 ```
 
 **IMPORTANT:** *MUST READ* and *MUST COMPLY* all *INSTRUCTIONS* in project `./CLAUDE.md`, especially *WORKFLOWS* section is *CRITICALLY IMPORTANT*, this rule is *MANDATORY. NON-NEGOTIABLE. NO EXCEPTIONS. MUST REMEMBER AT ALL TIMES!!!*
+
+## Active Technologies
+- TypeScript (native execution on Bun 1.x+, no build step for dev) + Hono ^4.x, Drizzle ORM ^0.3x, Effect ^3.x, Vercel AI SDK ^6.x, @ai-sdk/openai ^2.x, Zod ^3.x, ioredis, Pino (002-react-agents-ddd-setup)
+- PostgreSQL (postgres.js ^3.x driver), Redis standalone (ioredis) (002-react-agents-ddd-setup)
+
+## Recent Changes
+- 002-react-agents-ddd-setup Phase 4: Upgraded ai to ^6.x and @ai-sdk/openai to ^2.x (v5/v1 had LanguageModelV1/V2 incompatibility). convertToModelMessages is now async in v6.

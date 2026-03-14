@@ -37,6 +37,9 @@ package-lock.json
 yarn.lock
 pnpm-lock.yaml
 
+# AI skills
+skills-lock.json
+
 # semantic-release
 .nyc_output
 
@@ -56,6 +59,9 @@ next-env.d.ts
 build
 GoogleService-Info.plist
 
+# bun
+bun.lock
+
 repomix-output.xml
 .serena/cache
 plans/**/*
@@ -73,3 +79,7 @@ prompt.md
 .gemini/settings.json
 .claude/settings.bak.json
 .claude/active-plan
+
+.claude/**
+.specify/**
+plans/**

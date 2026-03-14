@@ -1,50 +1,139 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+=== Sync Impact Report ===
+Version change: 0.0.0 (template) → 1.0.0
+Modified principles: N/A (initial population)
+Added sections:
+  - 5 Core Principles (Effect-First, Streaming-Native, Provider-Swappable,
+    Session-Scoped Context, Simplicity & File Discipline)
+  - Technology Constraints
+  - Development Workflow
+  - Governance
+Removed sections: None
+Templates requiring updates:
+  - .specify/templates/plan-template.md ✅ no update needed (Constitution Check
+    is generic, filled at plan time)
+  - .specify/templates/spec-template.md ✅ no update needed
+  - .specify/templates/tasks-template.md ✅ no update needed
+Follow-up TODOs: None
+-->
+
+# ComAgent Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Effect-First Error Handling
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+All service-layer code MUST use Effect typed errors. Thrown exceptions
+are prohibited in services. Every failure mode MUST be represented as a
+tagged error type (`ProductNotFound`, `SessionNotFound`,
+`ScrapingServiceUnavailable`, `AIServiceError`, `DatabaseError`,
+`ValidationError`). Hono route handlers catch Effect failures and map
+them to HTTP status codes. SSE stream errors use `onError` callback
+from `toUIMessageStreamResponse()`.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+**Rationale:** Typed errors make failure modes explicit, testable, and
+self-documenting. No hidden exception paths.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### II. Streaming-Native Responses
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+The chat endpoint MUST stream responses via SSE using Vercel AI SDK's
+`toUIMessageStreamResponse()`. The ReAct loop uses `streamText` +
+`tool()` + `stepCountIs(3)` per ADR-0001. Frontend receives
+`message.parts[]` containing text and tool-invocation parts.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+**Rationale:** Token-by-token streaming is critical for perceived
+latency in a conversational shopping UX. The 3-step cap prevents
+runaway tool chains while allowing search-refine-detail flows.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### III. Provider-Swappable Services
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+`ProductService` MUST be an Effect service interface with swappable
+providers resolved via Effect layers at startup (not per-request
+factory). Provider selection uses `PRODUCT_SERVICE` env var:
+- `mock` (default) — hardcoded products, simulated latency
+- `scraping` — external Amazon scraping microservice
+- `amazon` — future PA-API 5.0
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+New product data sources MUST implement the same `ProductService`
+interface. No provider-specific logic may leak into route handlers.
+
+**Rationale:** Decouples business logic from data source. Enables
+local dev (mock), production (scraping), and future migration
+(PA-API) without code changes.
+
+### IV. Session-Scoped Context
+
+Per ADR-0001 Decision 4: chat context is scoped to a single session.
+Messages within a session are sent to the model; there is NO
+cross-session memory. User preferences (sizes, etc.) are injected via
+system prompt regardless of session. Sessions support full CRUD
+(create, list, switch, rename, delete) with cascade-delete on
+messages.
+
+**Rationale:** Keeps prompt size bounded and predictable. Avoids
+unbounded context accumulation across conversations.
+
+### V. Simplicity & File Discipline
+
+- All source files MUST be kebab-case and under 200 lines
+- YAGNI: do not implement features not yet specified
+- KISS: prefer the simplest solution that meets requirements
+- DRY: extract shared logic only when used in 3+ places
+- Tools are the extension point — new capabilities become new
+  `tool()` definitions, not new agent architectures
+
+**Rationale:** Small files improve LLM context management and code
+review. Premature abstraction creates maintenance burden.
+
+## Technology Constraints
+
+| Layer | Technology | Version |
+|-------|-----------|---------|
+| Runtime | Bun | latest |
+| HTTP | Hono | ^4.x |
+| ORM | Drizzle ORM + drizzle-kit | ^0.3x |
+| DB | PostgreSQL (postgres driver) | ^3.x |
+| Service layer | Effect | ^3.x |
+| AI SDK | Vercel AI SDK (`ai`) | ^5.x |
+| LLM provider | @ai-sdk/openai (GPT-4o) | ^1.x |
+| Validation | Zod | ^3.x |
+| Frontend consumption | @ai-sdk/react `useChat` | — |
+
+Stack changes require a new ADR. No additional frameworks (Express,
+Fastify, Prisma, tRPC) may be introduced without documented
+justification and constitution amendment.
+
+## Development Workflow
+
+- **Commits:** Conventional commit format. Run linting before commit,
+  tests before push. Never commit secrets or dotenv files.
+- **Code quality:** Functionality and readability over strict style.
+  Syntax errors and non-compilable code are blocking defects.
+- **Error handling:** Use try-catch at route boundaries; Effect typed
+  errors in service layer. Cover OWASP top-10 security standards.
+- **File structure:** Follow `src/` layout from the chat service spec
+  (routes/, services/, db/, types/, lib/, middleware/).
+- **Testing:** Tests MUST NOT be mocked to pass. Failed tests block
+  push. Integration tests cover service contracts and session CRUD.
+- **Implementation:** Always implement real code, never simulate or
+  stub unless building a designated mock provider.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This constitution is the highest-authority document for architectural
+and process decisions. All PRs and code reviews MUST verify compliance
+with these principles.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Amendment procedure:**
+1. Propose change via PR with rationale
+2. Update constitution version per semver (MAJOR: principle
+   removal/redefinition, MINOR: new principle/section, PATCH:
+   clarifications)
+3. Update Sync Impact Report at top of this file
+4. Propagate changes to dependent templates and docs
+
+**Compliance review:** Every implementation plan MUST include a
+Constitution Check gate (see plan template). Violations MUST be
+documented in the Complexity Tracking table with justification.
+
+**Version**: 1.0.0 | **Ratified**: 2026-03-12 | **Last Amended**: 2026-03-12

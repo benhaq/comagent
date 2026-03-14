@@ -1,0 +1,35 @@
+import { z } from "zod"
+
+const envSchema = z.object({
+  // Required
+  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  OPENAI_API_KEY: z.string().min(1, "OPENAI_API_KEY is required"),
+  AUTH_TOKEN: z.string().min(1, "AUTH_TOKEN is required"),
+
+  // Optional — Neon direct endpoint for migrations (falls back to DATABASE_URL)
+  DATABASE_URL_DIRECT: z.string().optional(),
+
+  // Optional with defaults
+  PORT: z.coerce.number().int().positive().default(3000),
+  PRODUCT_SERVICE: z.string().default("mock"),
+  REDIS_URL: z.string().default("redis://localhost:6379"),
+  LOG_LEVEL: z
+    .enum(["trace", "debug", "info", "warn", "error", "fatal"])
+    .default("info"),
+  RATE_LIMIT_RPM: z.coerce.number().int().positive().default(30),
+  SCRAPING_SERVICE_URL: z.string().default(""),
+  SCRAPING_SERVICE_API_KEY: z.string().default(""),
+
+  // Runtime context
+  NODE_ENV: z
+    .enum(["development", "production", "test"])
+    .default("development"),
+})
+
+/**
+ * Parsed and validated environment variables.
+ * Validation runs at module import time — fails fast on missing required vars.
+ */
+export const env = envSchema.parse(process.env)
+
+export type Env = typeof env

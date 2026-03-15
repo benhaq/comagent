@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/postgres-js"
 import postgres from "postgres"
 import * as chatSessionsSchema from "./schema/chat-sessions.js"
 import * as chatMessagesSchema from "./schema/chat-messages.js"
+import * as usersSchema from "./schema/users.js"
 
 const DATABASE_URL = process.env.DATABASE_URL!
 const DATABASE_URL_DIRECT = process.env.DATABASE_URL_DIRECT ?? DATABASE_URL
@@ -17,7 +18,7 @@ const queryClient = postgres(DATABASE_URL, {
 const migrationClient = postgres(DATABASE_URL_DIRECT, { max: 1 })
 
 export const db = drizzle(queryClient, {
-  schema: { ...chatSessionsSchema, ...chatMessagesSchema },
+  schema: { ...chatSessionsSchema, ...chatMessagesSchema, ...usersSchema },
 })
 
 export const migrationDb = drizzle(migrationClient)

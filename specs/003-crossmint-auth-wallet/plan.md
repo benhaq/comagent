@@ -1,33 +1,39 @@
-# Implementation Plan: Crossmint Auth Service & Wallet Association
+# Implementation Plan: Auth Service & Wallet Association via Crossmint
 
-**Branch**: `003-crossmint-auth-wallet` | **Date**: 2026-03-12 | **Spec**: `specs/003-crossmint-auth-wallet/spec.md`
+**Branch**: `003-crossmint-auth-wallet` | **Date**: 2026-03-15 | **Spec**: [spec.md](./spec.md)
 **Input**: Feature specification from `/specs/003-crossmint-auth-wallet/spec.md`
 
 ## Summary
 
-Replace the stub auth middleware with real Crossmint-backed authentication using `@crossmint/server-sdk`. On first authenticated request, lazily provision an EVM smart wallet on Base via the Crossmint Wallets REST API and persist the address to a new `users` table. Expose `GET /api/auth/profile` and `POST /api/auth/logout`. The OTP/login flow is handled entirely by the Crossmint client SDK on the frontend — this plan covers backend only.
+Replace the stub Bearer-token auth middleware with Crossmint JWT-based authentication. On first authenticated request, provision a Base EVM smart wallet via Crossmint Wallets REST API and store it on a new `users` table. Expose `GET /api/auth/profile` and `POST /api/auth/logout` endpoints.
 
 ## Technical Context
 
-**Language/Version**: TypeScript on Bun 1.x (no build step)
-**Primary Dependencies**: Hono ^4.x, Drizzle ORM ^0.38, Effect ^3.x, `@crossmint/server-sdk`, postgres ^3.x
-**Storage**: PostgreSQL (`users` table, new migration); no Redis for sessions
-**Testing**: `bun test` (integration tests using real DB, per constitution)
-**Target Platform**: Linux server (Bun runtime)
-**Project Type**: web-service (Hono REST API backend)
-**Performance Goals**: Auth middleware p95 < 100ms (JWT validation is local after first fetch of JWKS); wallet provisioning < 10s
-**Constraints**: No custom session storage; no OTP routes; wallet provisioning atomic with user creation
-**Scale/Scope**: Single-service backend, ~100 concurrent users initially
+**Language/Version**: TypeScript (Bun 1.x+ native execution)
+**Primary Dependencies**: Hono ^4.x, Drizzle ORM ^0.3x, Effect ^3.x, @crossmint/server-sdk (NEW), Zod ^3.x, Pino
+**Storage**: PostgreSQL (postgres.js ^3.x) — new `users` table
+**Testing**: `bun test`
+**Target Platform**: Bun server (Linux/macOS)
+**Project Type**: Web service (backend API)
+**Performance Goals**: Wallet provisioning <10s (excluding Crossmint API latency)
+**Constraints**: Crossmint JWT cookies required for auth; Base chain only; no custom session storage
+**Scale/Scope**: Single `users` table; 4 new/modified files; 1 new dependency
 
 ## Constitution Check
 
+*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+
 | Principle | Status | Notes |
-|---|---|---|
-| I. Effect-First Error Handling | ✅ | `CrossmintService` and `WalletService` use Effect typed errors (`CrossmintAuthError`, `WalletProvisionError`) |
-| II. Streaming-Native Responses | ✅ | Auth cookie refresh must be set before SSE stream opens — handled in middleware before `next()` |
-| III. Provider-Swappable Services | ✅ | `CrossmintService` is an Effect service; can be swapped with mock in tests via `Layer.succeed()` |
-| IV. Session-Scoped Context | ✅ | No cross-session state; `userId` scoped to request context |
-| V. Simplicity & File Discipline | ✅ | 3 new files under 200 lines each; no premature abstraction |
+|-----------|--------|-------|
+| I. Effect-First Error Handling | PASS | New `AuthenticationError`, `WalletProvisioningError` tagged errors. Middleware catches at route boundary. |
+| II. Streaming-Native Responses | N/A | Auth endpoints return JSON, not streams. Chat streaming unaffected. |
+| III. Provider-Swappable Services | PASS | Wallet service uses Effect service interface. Could swap Crossmint for another provider later. |
+| IV. Session-Scoped Context | PASS | No change to session scoping. Auth context is request-scoped via Hono vars. |
+| V. Simplicity & File Discipline | PASS | All files kebab-case, <200 lines. No premature abstractions. |
+| Tech Constraints | PASS | Only adding `@crossmint/server-sdk`. No unauthorized frameworks. |
+| Dev Workflow | PASS | Conventional commits. No secrets in code. Integration tests planned. |
+
+**Post-Design Re-check**: PASS — no violations introduced during Phase 1.
 
 ## Project Structure
 
@@ -36,219 +42,45 @@ Replace the stub auth middleware with real Crossmint-backed authentication using
 ```text
 specs/003-crossmint-auth-wallet/
 ├── plan.md              # This file
-├── spec.md              # Feature spec (revised 2026-03-12)
-└── checklists/
-    └── requirements.md
+├── spec.md              # Feature specification
+├── research.md          # Phase 0 research findings
+├── data-model.md        # Entity definitions
+├── quickstart.md        # Setup guide
+├── contracts/
+│   └── auth-api.md      # API contracts
+└── tasks.md             # Phase 2 output (not yet created)
 ```
 
-### Source Code Changes
+### Source Code (repository root)
 
 ```text
 src/
 ├── db/
 │   ├── schema/
-│   │   └── users.ts                    # NEW — users table schema
-│   └── migrations/
-│       └── 0001_users.sql              # NEW — generated by drizzle-kit
+│   │   ├── users.ts              # NEW — users table definition
+│   │   ├── chat-sessions.ts
+│   │   └── chat-messages.ts
+│   ├── client.ts                 # MODIFIED — add users schema import
+│   └── migrations/               # NEW migration generated by drizzle-kit
 ├── lib/
-│   └── errors.ts                       # MODIFY — add CrossmintAuthError, WalletProvisionError
+│   ├── crossmint.ts              # NEW — Crossmint SDK initialization
+│   ├── env.ts                    # MODIFIED — add CROSSMINT_SERVER_API_KEY, remove AUTH_TOKEN requirement
+│   └── errors.ts                 # MODIFIED — add AuthenticationError, WalletProvisioningError
 ├── middleware/
-│   └── auth.ts                         # REPLACE — stub → CrossmintAuth.getSession() middleware
+│   └── auth.ts                   # REPLACED — Crossmint JWT validation + user provisioning
 ├── routes/
-│   └── auth.ts                         # NEW — GET /api/auth/profile, POST /api/auth/logout
-└── services/
-    ├── crossmint-service.ts            # NEW — Effect service wrapping @crossmint/server-sdk
-    └── wallet-service.ts               # NEW — Effect service for wallet provisioning + user upsert
-
-tests/
-└── integration/
-    ├── auth-middleware.test.ts          # NEW — middleware integration tests
-    └── wallet-service.test.ts           # NEW — wallet provisioning integration tests
+│   └── auth.ts                   # NEW — /api/auth/profile, /api/auth/logout
+├── services/
+│   └── wallet-service.ts         # NEW — Crossmint wallet provisioning via REST API
+└── index.ts                      # MODIFIED — register auth routes
 ```
 
-## Implementation Phases
-
-### Phase 1 — Database Schema
-
-**Goal**: Add `users` table and run migration.
-
-**Steps**:
-1. Create `src/db/schema/users.ts`:
-   ```ts
-   pgTable("users", {
-     id: uuid().primaryKey().defaultRandom(),
-     crossmintUserId: varchar("crossmint_user_id", { length: 255 }).notNull().unique(),
-     email: varchar("email", { length: 255 }).notNull(),
-     walletAddress: varchar("wallet_address", { length: 42 }),       // 0x EVM address
-     crossmintWalletId: varchar("crossmint_wallet_id", { length: 255 }),
-     walletStatus: varchar("wallet_status", { length: 10 })          // pending|active|failed
-       .notNull().default("pending"),
-     createdAt: timestamp("created_at").notNull().defaultNow(),
-   })
-   ```
-2. Export from `src/db/schema/index.ts` (create if not exists).
-3. Run `bun run db:generate` → inspect generated SQL.
-4. Run `bun run db:migrate` against local dev DB.
-
-**Verification**: `SELECT * FROM users LIMIT 1` returns empty result without error.
-
----
-
-### Phase 2 — Error Types
-
-**Goal**: Add two new tagged errors to `src/lib/errors.ts`.
-
-```ts
-export class CrossmintAuthError extends Data.TaggedError("CrossmintAuthError")<{
-  cause?: unknown
-}> {}
-
-export class WalletProvisionError extends Data.TaggedError("WalletProvisionError")<{
-  cause?: unknown
-}> {}
-```
-
----
-
-### Phase 3 — CrossmintService (Effect service)
-
-**Goal**: Wrap `@crossmint/server-sdk` in an Effect service.
-
-**File**: `src/services/crossmint-service.ts`
-
-```ts
-// Service interface
-interface CrossmintServiceShape {
-  getSession(req, res): Effect.Effect<{ userId: string; email: string }, CrossmintAuthError>
-  getUser(userId: string): Effect.Effect<{ email: string }, CrossmintAuthError>
-  logout(req, res): Effect.Effect<void, CrossmintAuthError>
-}
-
-class CrossmintService extends Context.Tag("CrossmintService")<...>() {}
-```
-
-**Live layer**: initializes `createCrossmint({ apiKey: env.CROSSMINT_SERVER_API_KEY })` and `CrossmintAuth.from(crossmint)` once at startup; each Effect call wraps the SDK method in `Effect.tryPromise`.
-
-**Mock layer**: `Layer.succeed(CrossmintService, { getSession: () => Effect.succeed({ userId: "test-user", email: "test@test.com" }), ... })` for integration tests.
-
-**Env additions to `src/lib/env.ts`**:
-```ts
-CROSSMINT_SERVER_API_KEY: z.string().min(1, "CROSSMINT_SERVER_API_KEY is required"),
-CROSSMINT_CLIENT_API_KEY: z.string().min(1, "CROSSMINT_CLIENT_API_KEY is required"),
-CROSSMINT_CHAIN: z.string().default("base-sepolia"), // base for prod
-```
-
----
-
-### Phase 4 — WalletService (Effect service)
-
-**Goal**: Provision Base EVM wallet on first auth; upsert user row.
-
-**File**: `src/services/wallet-service.ts`
-
-```ts
-interface WalletServiceShape {
-  getOrProvisionWallet(
-    userId: string,
-    email: string
-  ): Effect.Effect<{ walletAddress: string }, WalletProvisionError | DatabaseError>
-}
-```
-
-**Logic**:
-1. `SELECT wallet_address FROM users WHERE crossmint_user_id = $userId`
-2. If found and `wallet_status = 'active'` → return `walletAddress`
-3. If not found:
-   a. Call Crossmint Wallets REST API: `POST https://staging.crossmint.com/api/2025-06-09/wallets` with `{ chainType: "evm", type: "smart", owner: "email:<email>" }`
-   b. On success: `INSERT INTO users (crossmint_user_id, email, wallet_address, crossmint_wallet_id, wallet_status) VALUES (...) ON CONFLICT (crossmint_user_id) DO NOTHING`
-   c. On Crossmint API failure: return `WalletProvisionError` — do not insert
-4. Return `walletAddress`
-
-**Note on idempotency**: Crossmint Wallets API returns existing wallet if called with same `owner` — safe to call again if DB insert failed.
-
----
-
-### Phase 5 — Auth Middleware (replace stub)
-
-**Goal**: Replace `src/middleware/auth.ts` entirely.
-
-**New middleware**:
-```ts
-export const authMiddleware = createMiddleware<{ Variables: AuthVariables }>(
-  async (c, next) => {
-    const result = await Effect.runPromise(
-      CrossmintService.pipe(
-        Effect.flatMap(svc => svc.getSession(c.req.raw, c.res))
-      ).pipe(
-        Effect.provide(crossmintServiceLayer),
-        Effect.catchAll(e => Effect.fail(e))
-      )
-    ).catch(() => null)
-
-    if (!result) return c.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, 401)
-
-    c.set("userId", result.userId)
-    c.set("userEmail", result.email)
-
-    // Lazy wallet provisioning
-    await Effect.runPromise(
-      WalletService.pipe(
-        Effect.flatMap(svc => svc.getOrProvisionWallet(result.userId, result.email))
-      ).pipe(Effect.provide(walletServiceLayer))
-    ).catch(/* log, don't fail request if wallet already exists */)
-
-    await next()
-  }
-)
-```
-
-**AuthVariables update**:
-```ts
-export type AuthVariables = { userId: string; userEmail: string }
-```
-
----
-
-### Phase 6 — Auth Routes
-
-**Goal**: Add `src/routes/auth.ts`.
-
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| `GET` | `/api/auth/profile` | required | Returns `{ userId, email, walletAddress }` |
-| `POST` | `/api/auth/logout` | required | Delegates to `crossmintAuth.logout()`, clears cookies |
-
-**Mount in `src/index.ts`**:
-```ts
-app.route("/api/auth", authRoutes)
-```
-
----
-
-### Phase 7 — Integration Tests
-
-**Goal**: Cover auth middleware and wallet service with real DB (no mocks per constitution).
-
-**`tests/integration/auth-middleware.test.ts`**:
-- Request without cookies → 401
-- Request with valid mock JWT (via `CrossmintService` mock layer) → 200, `userId` set
-- Request with invalid JWT → 401
-
-**`tests/integration/wallet-service.test.ts`**:
-- First call for new user → user row created, wallet address returned
-- Second call for same user → no new row, same address returned
-- Crossmint API failure → no user row inserted, `WalletProvisionError` returned
-
----
-
-### Phase 8 — Wire & Verify
-
-1. Add `@crossmint/server-sdk` to `package.json` via `bun add @crossmint/server-sdk`
-2. Add `CROSSMINT_SERVER_API_KEY`, `CROSSMINT_CLIENT_API_KEY`, `CROSSMINT_CHAIN` to `.env.example`
-3. Remove `AUTH_TOKEN` from `src/lib/env.ts` (stub token no longer used)
-4. Run full test suite: `bun test`
-5. Manual smoke test: start server, hit `GET /api/auth/profile` without cookies → 401; with cookies → 200
+**Structure Decision**: Single project, existing `src/` layout. No new directories beyond what exists. Follows `routes/`, `services/`, `middleware/`, `db/schema/` convention from constitution.
 
 ## Complexity Tracking
 
-No constitution violations. All new files are under 200 lines. No new frameworks introduced.
+No constitution violations. Table intentionally empty.
+
+| Violation | Why Needed | Simpler Alternative Rejected Because |
+|-----------|------------|-------------------------------------|
+| — | — | — |

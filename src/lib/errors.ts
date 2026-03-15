@@ -57,3 +57,21 @@ export class CacheError extends Data.TaggedError("CacheError")<{
 export class CacheNotFound extends Data.TaggedError("CacheNotFound")<{
   key: string
 }> {}
+
+/**
+ * Raised when Crossmint JWT validation fails or session cannot be established.
+ */
+export class AuthenticationError extends Data.TaggedError(
+  "AuthenticationError"
+)<{
+  cause?: unknown
+}> {}
+
+/**
+ * Raised when Crossmint wallet provisioning fails or times out.
+ */
+export class WalletProvisioningError extends Data.TaggedError(
+  "WalletProvisioningError"
+)<{
+  cause?: unknown
+}> {}

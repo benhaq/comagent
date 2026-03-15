@@ -100,9 +100,9 @@ When a logged-in user initiates checkout, the backend retrieves their Base EVM w
 
 - **FR-001**: System MUST validate all protected requests using `CrossmintAuth.getSession()` from `@crossmint/server-sdk`
 - **FR-002**: System MUST reject unauthenticated or invalidly-authenticated requests to protected routes with a 401 response
-- **FR-003**: System MUST make the authenticated `userId` (Crossmint user ID) available to downstream route handlers via Hono context
+- **FR-003**: System MUST make the authenticated `userId` (internal `users.id` UUID) and `userEmail` available to downstream route handlers via Hono context. The Crossmint user ID is stored on the `users` row as `crossmint_user_id` but is NOT the value exposed on context — internal UUID is used for DB FK compatibility with `chat_sessions.user_id`
 - **FR-004**: System MUST, on the first authenticated request for a `userId`, create a `users` row in PostgreSQL
-- **FR-005**: System MUST, on the first authenticated request for a new user, provision an EVM smart wallet on Base via Crossmint Wallets REST API (`POST /api/2025-06-09/wallets`) with `owner: "email:<user-email>"`
+- **FR-005**: System MUST, on the first authenticated request for a new user, provision an EVM smart wallet on Base via Crossmint Wallets REST API (`POST /api/2025-06-09/wallets`) with `linkedUser: "email:<user-email>"` and `chainType: "evm"`
 - **FR-006**: System MUST store the Crossmint wallet address (`0x` format) and Crossmint wallet ID on the `users` row
 - **FR-007**: System MUST NOT create a new wallet if the user already has a `wallet_address` in the `users` table
 - **FR-008**: System MUST treat user row creation and wallet provisioning as atomic — if either fails, neither is persisted

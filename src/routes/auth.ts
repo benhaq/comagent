@@ -48,6 +48,7 @@ authRoute.openapi(profileRoute, async (c) => {
 
   const user = await db.query.users?.findFirst({
     where: eq(users.id, userId),
+    columns: { id: true, email: true, walletAddress: true, walletStatus: true, onboardingStep: true },
   })
 
   if (!user) {
@@ -61,6 +62,7 @@ authRoute.openapi(profileRoute, async (c) => {
     email: user.email,
     walletAddress: walletAddress.success ? walletAddress.data : null,
     walletStatus: user.walletStatus,
+    onboardingStep: user.onboardingStep,
   })
 })
 

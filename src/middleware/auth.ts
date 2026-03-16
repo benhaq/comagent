@@ -10,6 +10,7 @@ import logger from "../lib/logger.js"
 export type AuthVariables = {
   userId: string
   userEmail: string
+  onboardingStep: number
 }
 
 export const authMiddleware = createMiddleware<{ Variables: AuthVariables }>(
@@ -61,6 +62,7 @@ export const authMiddleware = createMiddleware<{ Variables: AuthVariables }>(
     if (existingUser) {
       c.set("userId", existingUser.id)
       c.set("userEmail", existingUser.email)
+      c.set("onboardingStep", existingUser.onboardingStep)
       await next()
       return
     }
@@ -74,6 +76,7 @@ export const authMiddleware = createMiddleware<{ Variables: AuthVariables }>(
 
     c.set("userId", result.userId)
     c.set("userEmail", result.email)
+    c.set("onboardingStep", 0)
     await next()
   }
 )

@@ -3,6 +3,7 @@ import {
   uuid,
   varchar,
   timestamp,
+  integer,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core"
@@ -18,6 +19,19 @@ export const users = pgTable(
     walletStatus: varchar("wallet_status", { length: 20 })
       .notNull()
       .default("none"),
+    onboardingStep: integer("onboarding_step").notNull().default(0),
+    displayName: varchar("display_name", { length: 100 }),
+    firstName: varchar("first_name", { length: 50 }),
+    lastName: varchar("last_name", { length: 50 }),
+    street: varchar("street", { length: 200 }),
+    apt: varchar("apt", { length: 50 }),
+    country: varchar("country", { length: 2 }),
+    city: varchar("city", { length: 100 }),
+    state: varchar("state", { length: 100 }),
+    zip: varchar("zip", { length: 20 }),
+    topsSize: varchar("tops_size", { length: 10 }),
+    bottomsSize: varchar("bottoms_size", { length: 10 }),
+    footwearSize: varchar("footwear_size", { length: 10 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

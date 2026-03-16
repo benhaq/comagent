@@ -46,6 +46,7 @@ export const UserProfileSchema = z
     email: z.string().email().openapi({ example: "user@example.com" }),
     walletAddress: z.string().nullable().openapi({ example: "0xDeAdBeEf00000000000000000000000000000001" }),
     walletStatus: z.string().openapi({ example: "active" }),
+    onboardingStep: z.number().int().openapi({ example: 0 }),
   })
   .openapi("UserProfile")
 
@@ -71,6 +72,53 @@ export const commonErrors = {
   ...errorResponse(401, "Unauthorized — missing or invalid JWT"),
   ...errorResponse(500, "Internal server error"),
 }
+
+// ─── Onboarding schemas ─────────────────────────────────────────────────────
+
+export const ALLOWED_COUNTRIES = ["US", "GB", "AU", "CA", "DE", "FR", "JP", "SG"] as const
+
+export const TOPS_SIZES = ["XXS", "XS", "S", "M", "L", "XL", "XXL"] as const
+
+export const OnboardingStep1Schema = z
+  .object({
+    displayName: z.string().min(1).max(100).openapi({ example: "Ben" }),
+  })
+  .openapi("OnboardingStep1")
+
+export const OnboardingStep2Schema = z
+  .object({
+    firstName: z.string().min(1).max(50).openapi({ example: "Ben" }),
+    lastName: z.string().min(1).max(50).openapi({ example: "Smith" }),
+    street: z.string().min(5).max(200).openapi({ example: "123 Main St" }),
+    apt: z.string().max(50).optional().openapi({ example: "Apt 5B" }),
+    country: z.enum(ALLOWED_COUNTRIES).openapi({ example: "US" }),
+    city: z.string().min(2).max(100).openapi({ example: "New York" }),
+    state: z.string().max(100).optional().openapi({ example: "NY" }),
+    zip: z.string().min(3).max(20).openapi({ example: "10001" }),
+  })
+  .openapi("OnboardingStep2")
+
+export const OnboardingStep3Schema = z
+  .object({
+    topsSize: z.enum(TOPS_SIZES).openapi({ example: "M" }),
+    bottomsSize: z.string().min(1).max(10).openapi({ example: "32" }),
+    footwearSize: z.string().min(1).max(10).openapi({ example: "10" }),
+  })
+  .openapi("OnboardingStep3")
+
+export const OnboardingStepResponseSchema = z
+  .object({
+    success: z.boolean().openapi({ example: true }),
+    step: z.number().int().openapi({ example: 1 }),
+  })
+  .openapi("OnboardingStepResponse")
+
+export const OnboardingStatusSchema = z
+  .object({
+    step: z.number().int().openapi({ example: 0 }),
+    completed: z.boolean().openapi({ example: false }),
+  })
+  .openapi("OnboardingStatus")
 
 // ─── Shared validation hook ──────────────────────────────────────────────────
 

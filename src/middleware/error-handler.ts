@@ -3,6 +3,7 @@ import {
   ValidationError,
   ProductNotFound,
   SessionNotFound,
+  SessionOwnershipError,
   AIServiceError,
   ScrapingServiceUnavailable,
   DatabaseError,
@@ -30,6 +31,13 @@ export function errorHandler(err: Error, c: Context) {
     return c.json<ErrorResponse>(
       { error: "Session not found", code: "SESSION_NOT_FOUND" },
       404
+    )
+  }
+
+  if (err instanceof SessionOwnershipError) {
+    return c.json<ErrorResponse>(
+      { error: "Forbidden", code: "SESSION_OWNERSHIP_ERROR" },
+      403
     )
   }
 

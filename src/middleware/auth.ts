@@ -1,15 +1,14 @@
 import { createMiddleware } from "hono/factory"
 import { getCookie, setCookie } from "hono/cookie"
-import { Effect } from "effect"
 import { eq } from "drizzle-orm"
 import { crossmintAuth } from "../lib/crossmint.js"
 import { db } from "../db/client.js"
 import { users } from "../db/schema/users.js"
-import { provisionWallet } from "../services/wallet-service.js"
+import { provisionNewUser } from "./auth-provision.js"
 import logger from "../lib/logger.js"
 
 export type AuthVariables = {
-  userId: string    // internal users.id UUID (for DB FK compat)
+  userId: string
   userEmail: string
 }
 
@@ -64,67 +63,15 @@ export const authMiddleware = createMiddleware<{ Variables: AuthVariables }>(
       return
     }
 
-    // New user — fetch email
-    let email: string
-    try {
-      const profile = await crossmintAuth.getUser(crossmintUserId)
-      email = profile.email
-    } catch (err) {
-      logger.error({ err, crossmintUserId }, "Failed to fetch user profile")
-      return c.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, 401)
+    // New user — provision
+    const result = await provisionNewUser(crossmintUserId)
+
+    if (!result.ok) {
+      return c.json({ error: result.error, code: result.code }, result.status as 401 | 500 | 503)
     }
 
-    // Insert pending user row (ON CONFLICT DO NOTHING handles concurrent requests)
-    const inserted = await db
-      .insert(users)
-      .values({ crossmintUserId, email, walletStatus: "pending" })
-      .onConflictDoNothing()
-      .returning({ id: users.id })
-
-    const internalUserId =
-      inserted[0]?.id ??
-      (
-        await db.query.users?.findFirst({
-          where: eq(users.crossmintUserId, crossmintUserId),
-        })
-      )?.id
-
-    if (!internalUserId) {
-      return c.json({ error: "Internal Server Error", code: "USER_CREATE_FAILED" }, 500)
-    }
-
-    // Provision wallet via Effect
-    const walletResult = await Effect.runPromise(
-      Effect.either(provisionWallet(email))
-    )
-
-    if (walletResult._tag === "Left") {
-      const err = walletResult.left
-      logger.error(
-        { crossmintUserId, cause: err.cause instanceof Error ? err.cause.message : String(err.cause), event: "wallet_provision_failed" },
-        "Wallet provisioning failed — rolling back user row"
-      )
-      await db.delete(users).where(eq(users.id, internalUserId))
-      return c.json(
-        { error: "Service Unavailable", code: "WALLET_PROVISION_FAILED" },
-        503
-      )
-    }
-
-    const { address, walletId } = walletResult.right
-
-    await db
-      .update(users)
-      .set({
-        walletAddress: address,
-        crossmintWalletId: walletId,
-        walletStatus: "active",
-        updatedAt: new Date(),
-      })
-      .where(eq(users.id, internalUserId))
-
-    c.set("userId", internalUserId)
-    c.set("userEmail", email)
+    c.set("userId", result.userId)
+    c.set("userEmail", result.email)
     await next()
   }
 )

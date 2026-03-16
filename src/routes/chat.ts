@@ -1,12 +1,14 @@
-import { Hono } from "hono"
-import { zValidator } from "@hono/zod-validator"
-import { z } from "zod"
+import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi"
 import { streamText, convertToModelMessages, stepCountIs } from "ai"
 import { openai } from "@ai-sdk/openai"
-import { Layer } from "effect"
+import { Effect, Layer } from "effect"
 import { systemPrompt } from "../lib/chat-system-prompt.js"
 import { makeProductTools } from "../services/product-tools.js"
 import { ProductService } from "../services/product-service.js"
+import { ChatSessionService } from "../services/chat-session-service.js"
+import type { AuthVariables } from "../middleware/auth.js"
+import logger from "../lib/logger.js"
+import { ErrorSchema, errorResponse, commonErrors, validationHook } from "../lib/openapi-schemas.js"
 
 // ---------------------------------------------------------------------------
 // Request schema
@@ -19,42 +21,166 @@ const messageSchema = z
   .passthrough()
 
 const chatRequestSchema = z.object({
-  messages: z.array(messageSchema).min(1, "At least one message is required"),
+  messages: z.array(messageSchema).min(1).openapi({ description: "At least one message is required" }),
   sessionId: z.string().uuid().optional(),
 })
 
 // ---------------------------------------------------------------------------
-// Route factory — binds ProductService layer at startup
+// Route definition
 // ---------------------------------------------------------------------------
 
-export function createChatRoute(productServiceLayer: Layer.Layer<ProductService>) {
+const postChatRoute = createRoute({
+  method: "post",
+  path: "/",
+  tags: ["Chat"],
+  security: [{ CookieAuth: [] }],
+  summary: "Send a chat message and stream LLM response",
+  request: {
+    body: {
+      content: { "application/json": { schema: chatRequestSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: { "text/event-stream": { schema: z.string() } },
+      description: "Streamed LLM response with X-Session-Id header",
+    },
+    ...errorResponse(400, "Bad request — validation error"),
+    ...errorResponse(403, "Forbidden — session owned by another user"),
+    ...errorResponse(404, "Session not found"),
+    ...commonErrors,
+  },
+})
+
+// ---------------------------------------------------------------------------
+// Route factory — binds ProductService and ChatSessionService layers at startup
+// ---------------------------------------------------------------------------
+
+export function createChatRoute(
+  productServiceLayer: Layer.Layer<ProductService>,
+  sessionServiceLayer: Layer.Layer<ChatSessionService>,
+) {
   const tools = makeProductTools(productServiceLayer)
-  const chat = new Hono()
+  const chat = new OpenAPIHono<{ Variables: AuthVariables }>({ defaultHook: validationHook })
 
-  chat.post(
-    "/",
-    zValidator("json", chatRequestSchema, (result, c) => {
-      if (!result.success) {
-        return c.json({ error: "Invalid request body", code: "VALIDATION_ERROR" }, 400)
+  // Helper: run a ChatSessionService effect, returning Either
+  const runSession = <A, E>(effect: Effect.Effect<A, E, ChatSessionService>) =>
+    Effect.runPromise(
+      effect.pipe(Effect.provide(sessionServiceLayer), Effect.either),
+    )
+
+  chat.openapi(postChatRoute, async (c) => {
+    const userId = c.get("userId")
+    const { messages, sessionId: reqSessionId } = c.req.valid("json")
+
+    // ------------------------------------------------------------------
+    // Session resolution
+    // ------------------------------------------------------------------
+    let sessionId: string
+    let existingMessages: Array<{ role: string; content: unknown }> = []
+
+    if (!reqSessionId) {
+      // Auto-create a new session
+      const createResult = await runSession(
+        ChatSessionService.pipe(Effect.flatMap((s) => s.create(userId))),
+      )
+      if (createResult._tag === "Left") {
+        const err = createResult.left as { _tag: string; message?: string }
+        logger.error({ err, userId }, "Failed to create chat session")
+        return c.json({ error: "Failed to create session", code: err._tag }, 500)
       }
-    }),
-    async (c) => {
-      const { messages } = c.req.valid("json")
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const modelMessages = await convertToModelMessages(messages as any)
-
-      const result = streamText({
-        model: openai("gpt-4o"),
-        system: systemPrompt,
-        messages: modelMessages,
-        tools,
-        stopWhen: stepCountIs(3),
-      })
-
-      return result.toUIMessageStreamResponse()
+      sessionId = createResult.right.id
+    } else {
+      // Validate ownership and load existing messages
+      const getResult = await runSession(
+        ChatSessionService.pipe(
+          Effect.flatMap((s) => s.getWithMessages(reqSessionId, userId)),
+        ),
+      )
+      if (getResult._tag === "Left") {
+        const err = getResult.left as { _tag: string; message?: string }
+        if (err._tag === "SessionNotFound") {
+          return c.json({ error: "Session not found", code: err._tag }, 404)
+        }
+        if (err._tag === "SessionOwnershipError") {
+          return c.json({ error: "Forbidden", code: err._tag }, 403)
+        }
+        return c.json({ error: "Session error", code: err._tag }, 500)
+      }
+      sessionId = reqSessionId
+      existingMessages = getResult.right.messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }))
     }
-  )
+
+    // ------------------------------------------------------------------
+    // Persist the latest user message
+    // ------------------------------------------------------------------
+    const lastMsg = messages[messages.length - 1]
+    const persistUserResult = await runSession(
+      ChatSessionService.pipe(
+        Effect.flatMap((s) => s.addMessage(sessionId, lastMsg.role as string, lastMsg.content)),
+      ),
+    )
+    if (persistUserResult._tag === "Left") {
+      logger.warn(
+        { err: persistUserResult.left, sessionId },
+        "Failed to persist user message",
+      )
+    }
+
+    // ------------------------------------------------------------------
+    // Build model message history: DB history + latest user message
+    // ------------------------------------------------------------------
+    const historyForModel =
+      existingMessages.length > 0
+        ? [...existingMessages, { role: lastMsg.role as string, content: lastMsg.content }]
+        : messages
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const modelMessages = await convertToModelMessages(historyForModel as any)
+
+    // ------------------------------------------------------------------
+    // Stream LLM response
+    // ------------------------------------------------------------------
+    const result = streamText({
+      model: openai("gpt-4o"),
+      system: systemPrompt,
+      messages: modelMessages,
+      tools,
+      stopWhen: stepCountIs(3),
+      onFinish: async ({ text }) => {
+        try {
+          await Effect.runPromise(
+            ChatSessionService.pipe(
+              Effect.flatMap((s) => s.addMessage(sessionId, "assistant", text)),
+              Effect.provide(sessionServiceLayer),
+            ),
+          )
+
+          // Auto-title on first exchange (user + assistant = 2 messages persisted)
+          const totalMessages = existingMessages.length + 2
+          if (totalMessages <= 2) {
+            await Effect.runPromise(
+              ChatSessionService.pipe(
+                Effect.flatMap((s) => s.autoTitle(sessionId)),
+                Effect.provide(sessionServiceLayer),
+                Effect.either,
+              ),
+            )
+          }
+        } catch (err) {
+          logger.error({ err, sessionId }, "Failed to persist assistant message")
+        }
+      },
+    })
+
+    // Set session ID header so client can track it
+    const response = result.toUIMessageStreamResponse()
+    response.headers.set("X-Session-Id", sessionId)
+    return response
+  })
 
   return chat
 }

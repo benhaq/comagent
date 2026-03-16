@@ -1,4 +1,5 @@
-import { Hono } from "hono"
+import { OpenAPIHono } from "@hono/zod-openapi"
+import { swaggerUI } from "@hono/swagger-ui"
 import { env } from "./lib/env.js"
 import logger from "./lib/logger.js"
 import { authMiddleware } from "./middleware/auth.js"
@@ -6,12 +7,22 @@ import { errorHandler } from "./middleware/error-handler.js"
 import { healthRoute } from "./routes/health.js"
 import { createChatRoute } from "./routes/chat.js"
 import { authRoute } from "./routes/auth.js"
+import { createSessionRoutes } from "./routes/sessions.js"
 import { MockProductServiceLive } from "./services/mock-product-service.js"
+import { ChatSessionServiceLive } from "./services/chat-session-service-live.js"
 
 // Phase 6 will wire ScrapingProductServiceLive when PRODUCT_SERVICE=scraping
 const productServiceLayer = MockProductServiceLive
 
-const app = new Hono()
+const app = new OpenAPIHono()
+
+// Register cookie auth security scheme for OpenAPI docs
+app.openAPIRegistry.registerComponent("securitySchemes", "CookieAuth", {
+  type: "apiKey",
+  in: "cookie",
+  name: "crossmint-jwt",
+  description: "Crossmint JWT session cookie",
+})
 
 // CORS — allow specific origins; credentials:true requires explicit origin echo, never wildcard
 const ALLOWED_ORIGINS = new Set([
@@ -29,14 +40,13 @@ app.use("*", async (c, next) => {
       headers: {
         "Access-Control-Allow-Origin": origin,
         "Access-Control-Allow-Credentials": "true",
-        "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+        "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,PATCH,OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type,Authorization,Cookie",
         "Vary": "Origin",
       },
     })
   }
   await next()
-  // Append CORS headers to the final response (covers 401s, 503s, etc.)
   if (ALLOWED_ORIGINS.has(origin)) {
     c.res.headers.set("Access-Control-Allow-Origin", origin)
     c.res.headers.set("Access-Control-Allow-Credentials", "true")
@@ -44,7 +54,7 @@ app.use("*", async (c, next) => {
   }
 })
 
-// Pino HTTP request logger — replaces hono/logger so all logs share the same transport
+// Pino HTTP request logger
 app.use("*", async (c, next) => {
   const start = Date.now()
   await next()
@@ -63,12 +73,24 @@ app.onError(errorHandler)
 // Public routes (no auth required)
 app.route("/health", healthRoute)
 
+// OpenAPI spec + Swagger UI (public)
+app.doc("/doc", {
+  openapi: "3.1.0",
+  info: {
+    title: "ComAgent API",
+    version: "0.1.0",
+    description: "AI Shopping Assistant — ReAct chat agent backend",
+  },
+})
+app.get("/swagger", swaggerUI({ url: "/doc" }))
+
 // Auth middleware for all protected routes
 app.use("/api/*", authMiddleware)
 
 // Protected API routes
 app.route("/api/auth", authRoute)
-app.route("/api/chat", createChatRoute(productServiceLayer))
+app.route("/api/chat", createChatRoute(productServiceLayer, ChatSessionServiceLive))
+app.route("/api/sessions", createSessionRoutes(ChatSessionServiceLive))
 
 // Start server
 const server = Bun.serve({

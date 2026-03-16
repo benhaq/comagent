@@ -68,6 +68,15 @@ export class AuthenticationError extends Data.TaggedError(
 }> {}
 
 /**
+ * Raised when the authenticated user does not own the requested session.
+ */
+export class SessionOwnershipError extends Data.TaggedError(
+  "SessionOwnershipError"
+)<{
+  sessionId: string
+}> {}
+
+/**
  * Raised when Crossmint wallet provisioning fails or times out.
  */
 export class WalletProvisioningError extends Data.TaggedError(

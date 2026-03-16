@@ -1,6 +1,7 @@
 # Implementation Plan: Auth Service & Wallet Association via Crossmint
 
 **Branch**: `003-crossmint-auth-wallet` | **Date**: 2026-03-15 | **Spec**: [spec.md](./spec.md)
+**Review**: [code-reviewer-260316-auth-sessions-integration.md](./reports/code-reviewer-260316-auth-sessions-integration.md) | **Reviewed**: 2026-03-16
 **Input**: Feature specification from `/specs/003-crossmint-auth-wallet/spec.md`
 
 ## Summary

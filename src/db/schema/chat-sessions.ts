@@ -1,10 +1,13 @@
 import { pgTable, uuid, varchar, timestamp, index } from "drizzle-orm/pg-core"
+import { users } from "./users"
 
 export const chatSessions = pgTable(
   "chat_sessions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    userId: uuid("user_id").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     title: varchar("title", { length: 100 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),

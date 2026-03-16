@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi"
-import { eq } from "drizzle-orm"
+import { eq, and, gte, sql } from "drizzle-orm"
 import { db } from "../db/client.js"
 import { users } from "../db/schema/users.js"
 import type { AuthVariables } from "../middleware/auth.js"
@@ -9,7 +9,6 @@ import {
   OnboardingStep3Schema,
   OnboardingStepResponseSchema,
   OnboardingStatusSchema,
-  ErrorSchema,
   errorResponse,
   commonErrors,
   validationHook,
@@ -99,13 +98,8 @@ export const onboardingRoute = new OpenAPIHono<{ Variables: AuthVariables }>({
   defaultHook: validationHook,
 })
 
-onboardingRoute.openapi(statusRoute, async (c) => {
-  const userId = c.get("userId")
-  const user = await db.query.users?.findFirst({
-    where: eq(users.id, userId),
-    columns: { onboardingStep: true },
-  })
-  const step = user?.onboardingStep ?? 0
+onboardingRoute.openapi(statusRoute, (c) => {
+  const step = c.get("onboardingStep")
   return c.json({ step, completed: step >= 3 })
 })
 
@@ -113,9 +107,14 @@ onboardingRoute.openapi(step1Route, async (c) => {
   const userId = c.get("userId")
   const { displayName } = c.req.valid("json")
 
+  // Use GREATEST so re-submitting step-1 never regresses the step counter
   await db
     .update(users)
-    .set({ displayName, onboardingStep: 1, updatedAt: new Date() })
+    .set({
+      displayName,
+      onboardingStep: sql`GREATEST(${users.onboardingStep}, 1)`,
+      updatedAt: new Date(),
+    })
     .where(eq(users.id, userId))
 
   return c.json({ success: true, step: 1 })
@@ -123,19 +122,10 @@ onboardingRoute.openapi(step1Route, async (c) => {
 
 onboardingRoute.openapi(step2Route, async (c) => {
   const userId = c.get("userId")
-
-  const user = await db.query.users?.findFirst({
-    where: eq(users.id, userId),
-    columns: { onboardingStep: true },
-  })
-
-  if (!user || user.onboardingStep < 1) {
-    return c.json({ error: "Complete step 1 first", code: "STEP_NOT_REACHED" }, 403) as never
-  }
-
   const data = c.req.valid("json")
 
-  await db
+  // Conditional UPDATE — only succeeds if step >= 1
+  const result = await db
     .update(users)
     .set({
       firstName: data.firstName,
@@ -146,29 +136,25 @@ onboardingRoute.openapi(step2Route, async (c) => {
       city: data.city,
       state: data.state ?? null,
       zip: data.zip,
-      onboardingStep: 2,
+      onboardingStep: sql`GREATEST(${users.onboardingStep}, 2)`,
       updatedAt: new Date(),
     })
-    .where(eq(users.id, userId))
+    .where(and(eq(users.id, userId), gte(users.onboardingStep, 1)))
+    .returning({ id: users.id })
+
+  if (result.length === 0) {
+    return c.json({ error: "Complete step 1 first", code: "STEP_NOT_REACHED" }, 403) as never
+  }
 
   return c.json({ success: true, step: 2 })
 })
 
 onboardingRoute.openapi(step3Route, async (c) => {
   const userId = c.get("userId")
-
-  const user = await db.query.users?.findFirst({
-    where: eq(users.id, userId),
-    columns: { onboardingStep: true },
-  })
-
-  if (!user || user.onboardingStep < 2) {
-    return c.json({ error: "Complete step 2 first", code: "STEP_NOT_REACHED" }, 403) as never
-  }
-
   const { topsSize, bottomsSize, footwearSize } = c.req.valid("json")
 
-  await db
+  // Conditional UPDATE — only succeeds if step >= 2
+  const result = await db
     .update(users)
     .set({
       topsSize,
@@ -177,7 +163,12 @@ onboardingRoute.openapi(step3Route, async (c) => {
       onboardingStep: 3,
       updatedAt: new Date(),
     })
-    .where(eq(users.id, userId))
+    .where(and(eq(users.id, userId), gte(users.onboardingStep, 2)))
+    .returning({ id: users.id })
+
+  if (result.length === 0) {
+    return c.json({ error: "Complete step 2 first", code: "STEP_NOT_REACHED" }, 403) as never
+  }
 
   return c.json({ success: true, step: 3 })
 })

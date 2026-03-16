@@ -10,6 +10,7 @@ import type {
   ProductSearchParams,
   ProductSearchResult,
   ScrapingProduct,
+  ScrapingProductDetailResponse,
   ScrapingSearchResponse,
 } from "../types/product.js"
 
@@ -88,6 +89,18 @@ function makeScrapingImpl(cache: {
       catch: (cause) => new ScrapingServiceUnavailable({ cause }),
     }).pipe(Effect.retry(RETRY_SCHEDULE))
 
+  const fetchProductByAsin = (asin: string): Effect.Effect<ScrapingProduct | null, ScrapingServiceUnavailable> =>
+    Effect.tryPromise({
+      try: async () => {
+        const url = `${baseUrl}/api/search/realtime/product/${encodeURIComponent(asin)}`
+        const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
+        if (!res.ok) throw new Error(`Scraping detail API ${res.status}: ${res.statusText}`)
+        const body = (await res.json()) as ScrapingProductDetailResponse
+        return body.data
+      },
+      catch: (cause) => new ScrapingServiceUnavailable({ cause }),
+    }).pipe(Effect.retry(RETRY_SCHEDULE))
+
   const search = (params: ProductSearchParams): Effect.Effect<ProductSearchResult, ScrapingServiceUnavailable> =>
     Effect.gen(function* () {
       const data = yield* fetchSearch(params.query)
@@ -128,8 +141,16 @@ function makeScrapingImpl(cache: {
       )
       if (cached) return toProductDetail(cached)
 
-      // No cache hit — fail with not found (no detail endpoint available)
-      return yield* Effect.fail(new ProductNotFound({ productId }))
+      // Cache miss — fetch from realtime detail endpoint
+      const product = yield* fetchProductByAsin(productId)
+      if (!product) return yield* Effect.fail(new ProductNotFound({ productId }))
+
+      // Cache for future lookups
+      yield* cache.set(productCacheKey(product.asin), JSON.stringify(product), CACHE_TTL_SECONDS).pipe(
+        Effect.catchAll(() => Effect.void)
+      )
+
+      return toProductDetail(product)
     })
 
   return { search, getDetails }

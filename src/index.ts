@@ -15,6 +15,10 @@ import { ScrapingProductServiceLive } from "./services/scraping-product-service.
 import { CacheServiceLive } from "./services/cache-service.js";
 import { Layer } from "effect";
 import { ChatSessionServiceLive } from "./services/chat-session-service-live.js";
+import { createCheckoutRoutes } from "./routes/checkout.js";
+import { CheckoutServiceLive } from "./services/checkout-service-live.js";
+import { createOrderRoutes } from "./routes/orders.js";
+import { OrderServiceLive } from "./services/order-service-live.js";
 
 const productServiceLayer =
   env.PRODUCT_SERVICE === "scraping"
@@ -110,6 +114,8 @@ app.route("/api/auth", authRoute);
 // Onboarding gate for remaining protected routes
 app.use("/api/chat/*", onboardingGate);
 app.use("/api/sessions/*", onboardingGate);
+app.use("/api/checkout/*", onboardingGate);
+app.use("/api/orders/*", onboardingGate);
 
 // Gated API routes
 app.route(
@@ -117,6 +123,8 @@ app.route(
   createChatRoute(productServiceLayer, ChatSessionServiceLive),
 );
 app.route("/api/sessions", createSessionRoutes(ChatSessionServiceLive));
+app.route("/api/checkout", createCheckoutRoutes(CheckoutServiceLive));
+app.route("/api/orders", createOrderRoutes(OrderServiceLive));
 
 // Start server
 const server = Bun.serve({

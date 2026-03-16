@@ -36,6 +36,13 @@
       "when": 1773700369729,
       "tag": "0004_fair_titanium_man",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1773701611198,
+      "tag": "0005_strange_mongu",
+      "breakpoints": true
     }
   ]
 }

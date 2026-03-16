@@ -184,13 +184,13 @@ export function createChatRoute(
       onStepFinish: ({ toolCalls, toolResults }) => {
         if (toolCalls.length > 0) {
           logger.info(
-            { toolCalls: toolCalls.map((tc) => ({ name: tc.toolName, args: tc.args })) },
+            { toolCalls: toolCalls.map((tc: any) => ({ name: tc.toolName, args: tc.args })) },
             "Tool calls executed"
           )
         }
         if (toolResults.length > 0) {
           logger.info(
-            { toolResults: toolResults.map((tr) => ({ name: tr.toolName, resultPreview: JSON.stringify(tr.result).slice(0, 200) })) },
+            { toolResults: toolResults.map((tr: any) => ({ name: tr.toolName, resultPreview: JSON.stringify(tr.result).slice(0, 200) })) },
             "Tool results received"
           )
         }

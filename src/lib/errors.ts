@@ -84,3 +84,68 @@ export class WalletProvisioningError extends Data.TaggedError(
 )<{
   cause?: unknown
 }> {}
+
+/**
+ * Raised when user's cart already has 5 items.
+ */
+export class CartFullError extends Data.TaggedError("CartFullError")<{
+  userId: string
+}> {}
+
+/**
+ * Raised when the same product+size+color variant is already in cart.
+ */
+export class CartDuplicateItemError extends Data.TaggedError("CartDuplicateItemError")<{
+  productId: string
+  size: string
+  color: string
+}> {}
+
+/**
+ * Raised when a cart item is not found or not owned by user.
+ */
+export class CartItemNotFoundError extends Data.TaggedError("CartItemNotFoundError")<{
+  itemId: string
+}> {}
+
+/**
+ * Raised when user has no Crossmint wallet provisioned.
+ */
+export class CheckoutNoWalletError extends Data.TaggedError("CheckoutNoWalletError")<{
+  userId: string
+}> {}
+
+/**
+ * Raised when user profile is missing required shipping address fields.
+ */
+export class CheckoutMissingAddressError extends Data.TaggedError("CheckoutMissingAddressError")<{
+  userId: string
+}> {}
+
+/**
+ * Raised when user's wallet has insufficient USDC for the order.
+ */
+export class InsufficientFundsError extends Data.TaggedError("InsufficientFundsError")<{
+  orderId?: string
+}> {}
+
+/**
+ * Raised when Crossmint order creation API fails.
+ */
+export class CheckoutOrderCreationError extends Data.TaggedError("CheckoutOrderCreationError")<{
+  cause?: unknown
+}> {}
+
+/**
+ * Raised when Crossmint transaction signing fails.
+ */
+export class CheckoutPaymentError extends Data.TaggedError("CheckoutPaymentError")<{
+  cause?: unknown
+}> {}
+
+/**
+ * Raised when an order is not found in local DB or not owned by user.
+ */
+export class OrderNotFoundError extends Data.TaggedError("OrderNotFoundError")<{
+  orderId: string
+}> {}

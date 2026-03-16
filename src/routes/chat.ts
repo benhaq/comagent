@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { streamText, convertToModelMessages, stepCountIs, type UIMessage } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { model } from "../lib/model.js";
 import { Effect, Layer } from "effect";
 import { systemPrompt } from "../lib/chat-system-prompt.js";
 import { makeProductTools } from "../services/product-tools.js";
@@ -176,7 +176,7 @@ export function createChatRoute(
     // Stream LLM response
     // ------------------------------------------------------------------
     const result = streamText({
-      model: openai("gpt-4o"),
+      model,
       system: systemPrompt,
       messages: modelMessages,
       tools,

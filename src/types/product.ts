@@ -80,3 +80,9 @@ export interface ScrapingSearchResponse {
   query: string
   executionTime: number
 }
+
+export interface ScrapingProductDetailResponse {
+  success: boolean
+  data: ScrapingProduct | null
+  source: string
+}

@@ -3,6 +3,8 @@ import { swaggerUI } from "@hono/swagger-ui";
 import { env } from "./lib/env.js";
 import logger from "./lib/logger.js";
 import { authMiddleware } from "./middleware/auth.js";
+import { onboardingGate } from "./middleware/onboarding-gate.js";
+import { onboardingRoute } from "./routes/onboarding.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { healthRoute } from "./routes/health.js";
 import { createChatRoute } from "./routes/chat.js";
@@ -92,8 +94,17 @@ app.get("/swagger", swaggerUI({ url: "/doc" }));
 // Auth middleware for all protected routes
 app.use("/api/*", authMiddleware);
 
-// Protected API routes
+// Onboarding routes (no gate — accessible during onboarding)
+app.route("/api/onboarding", onboardingRoute);
+
+// Auth routes (no gate — profile/logout always accessible)
 app.route("/api/auth", authRoute);
+
+// Onboarding gate for remaining protected routes
+app.use("/api/chat/*", onboardingGate);
+app.use("/api/sessions/*", onboardingGate);
+
+// Gated API routes
 app.route(
   "/api/chat",
   createChatRoute(productServiceLayer, ChatSessionServiceLive),

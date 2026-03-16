@@ -46,6 +46,7 @@ export const UserProfileSchema = z
     email: z.string().email().openapi({ example: "user@example.com" }),
     walletAddress: z.string().nullable().openapi({ example: "0xDeAdBeEf00000000000000000000000000000001" }),
     walletStatus: z.string().openapi({ example: "active" }),
+    onboardingStep: z.number().int().openapi({ example: 0 }),
   })
   .openapi("UserProfile")
 

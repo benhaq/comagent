@@ -61,6 +61,7 @@ authRoute.openapi(profileRoute, async (c) => {
     email: user.email,
     walletAddress: walletAddress.success ? walletAddress.data : null,
     walletStatus: user.walletStatus,
+    onboardingStep: user.onboardingStep,
   })
 })
 

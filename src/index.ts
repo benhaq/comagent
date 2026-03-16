@@ -9,10 +9,15 @@ import { createChatRoute } from "./routes/chat.js";
 import { authRoute } from "./routes/auth.js";
 import { createSessionRoutes } from "./routes/sessions.js";
 import { MockProductServiceLive } from "./services/mock-product-service.js";
+import { ScrapingProductServiceLive } from "./services/scraping-product-service.js";
+import { CacheServiceLive } from "./services/cache-service.js";
+import { Layer } from "effect";
 import { ChatSessionServiceLive } from "./services/chat-session-service-live.js";
 
-// Phase 6 will wire ScrapingProductServiceLive when PRODUCT_SERVICE=scraping
-const productServiceLayer = MockProductServiceLive;
+const productServiceLayer =
+  env.PRODUCT_SERVICE === "scraping"
+    ? ScrapingProductServiceLive.pipe(Layer.provide(CacheServiceLive))
+    : MockProductServiceLive;
 
 const app = new OpenAPIHono();
 

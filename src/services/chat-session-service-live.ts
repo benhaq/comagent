@@ -1,7 +1,7 @@
 import { Effect, Layer } from "effect"
 import { eq, and, desc, count, asc } from "drizzle-orm"
 import { generateText } from "ai"
-import { openai } from "@ai-sdk/openai"
+import { model } from "../lib/model.js"
 import { db } from "../db/client.js"
 import { chatSessions } from "../db/schema/chat-sessions.js"
 import { chatMessages } from "../db/schema/chat-messages.js"
@@ -149,7 +149,7 @@ const impl: import("./chat-session-service.js").ChatSessionServiceShape = {
               .map((m) => `${m.role}: ${JSON.stringify(m.content)}`)
               .join("\n")
             const { text } = await generateText({
-              model: openai("gpt-4o-mini"),
+              model,
               prompt: `Generate a short title (max 50 characters) for this chat session based on these messages:\n\n${preview}\n\nRespond with only the title, no quotes or punctuation.`,
               maxOutputTokens: 20,
             })

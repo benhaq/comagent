@@ -14,8 +14,10 @@ export type AuthVariables = {
 
 export const authMiddleware = createMiddleware<{ Variables: AuthVariables }>(
   async (c, next) => {
-    const jwt = getCookie(c, "crossmint-jwt")
-    const refreshToken = getCookie(c, "crossmint-refresh-token")
+    // Support both cookie and Authorization: Bearer header (for local test pages)
+    const authHeader = c.req.header("Authorization")
+    const jwt = (authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null) ?? getCookie(c, "crossmint-jwt")
+    const refreshToken = c.req.header("X-Refresh-Token") ?? getCookie(c, "crossmint-refresh-token") ?? ""
 
     if (!jwt) {
       return c.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, 401)

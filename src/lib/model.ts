@@ -15,4 +15,6 @@ const openrouter = createOpenAI({
   },
 })
 
-export const model = openrouter(env.LLM_MODEL)
+// OpenRouter only supports Chat Completions API, not Responses API
+// .chat() forces Chat Completions format (AI SDK v6 defaults to Responses API)
+export const model = openrouter.chat(env.LLM_MODEL)

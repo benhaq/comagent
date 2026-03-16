@@ -1,10 +1,11 @@
-import { z } from "zod"
+import { z } from "zod";
 
 const envSchema = z.object({
   // Required
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
-  OPENAI_API_KEY: z.string().min(1, "OPENAI_API_KEY is required"),
-  CROSSMINT_SERVER_API_KEY: z.string().min(1, "CROSSMINT_SERVER_API_KEY is required"),
+  CROSSMINT_SERVER_API_KEY: z
+    .string()
+    .min(1, "CROSSMINT_SERVER_API_KEY is required"),
 
   // Optional — legacy stub auth token (no longer required; Crossmint JWT replaces it)
   AUTH_TOKEN: z.string().optional(),
@@ -34,12 +35,12 @@ const envSchema = z.object({
   NODE_ENV: z
     .enum(["development", "production", "test"])
     .default("development"),
-})
+});
 
 /**
  * Parsed and validated environment variables.
  * Validation runs at module import time — fails fast on missing required vars.
  */
-export const env = envSchema.parse(process.env)
+export const env = envSchema.parse(process.env);
 
-export type Env = typeof env
+export type Env = typeof env;

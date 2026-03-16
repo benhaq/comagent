@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect"
-import type { ToolSet } from "ai"
+import { tool, type ToolSet } from "ai"
 import { z } from "zod"
 import { ProductService } from "./product-service.js"
 import type { ProductDetail, ProductSearchResult } from "../types/product.js"
@@ -39,15 +39,12 @@ export function makeProductTools(layer: Layer.Layer<ProductService>): ToolSet {
     return Effect.runPromise(provided)
   }
 
-  // Tool() helper's TypeScript overloads conflict with complex Effect return types.
-  // Constructing tool objects directly; AI SDK reads { description, parameters, execute } at runtime.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tools: Record<string, any> = {
-    searchProducts: {
+  const tools: ToolSet = {
+    searchProducts: tool({
       description:
         "Search for products matching the user's requirements. Use this to find products based on " +
         "search terms, category, price range, size, or color preferences.",
-      parameters: searchParamsSchema,
+      inputSchema: searchParamsSchema,
       execute: async (params: SearchToolParams): Promise<ProductSearchResult> =>
         run(
           ProductService.pipe(
@@ -55,12 +52,12 @@ export function makeProductTools(layer: Layer.Layer<ProductService>): ToolSet {
             Effect.orDie
           )
         ),
-    },
-    getProductDetails: {
+    }),
+    getProductDetails: tool({
       description:
         "Get detailed information about a specific product by its ID. Use this when the user wants " +
         "more details about a product returned from searchProducts.",
-      parameters: detailParamsSchema,
+      inputSchema: detailParamsSchema,
       execute: async ({ productId }: DetailToolParams): Promise<ProductDetail | null> =>
         run(
           ProductService.pipe(
@@ -69,8 +66,8 @@ export function makeProductTools(layer: Layer.Layer<ProductService>): ToolSet {
             Effect.orDie
           )
         ),
-    },
+    }),
   }
 
-  return tools as ToolSet
+  return tools
 }

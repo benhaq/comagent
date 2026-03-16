@@ -1,6 +1,6 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { streamText, convertToModelMessages, stepCountIs } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { streamText, convertToModelMessages, stepCountIs, type UIMessage } from "ai";
+import { model } from "../lib/model.js";
 import { Effect, Layer } from "effect";
 import { systemPrompt } from "../lib/chat-system-prompt.js";
 import { makeProductTools } from "../services/product-tools.js";
@@ -14,6 +14,19 @@ import {
   commonErrors,
   validationHook,
 } from "../lib/openapi-schemas.js";
+
+// ---------------------------------------------------------------------------
+// Helper: convert plain {role, content} to UIMessage parts format for AI SDK v6
+// ---------------------------------------------------------------------------
+
+let msgCounter = 0
+function toUIMessage(role: string, content: unknown): UIMessage {
+  return {
+    id: `msg-${++msgCounter}`,
+    role: role as UIMessage["role"],
+    parts: [{ type: "text", text: typeof content === "string" ? content : JSON.stringify(content) }],
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Request schema
@@ -148,26 +161,40 @@ export function createChatRoute(
 
     // ------------------------------------------------------------------
     // Build model message history: DB history + latest user message
+    // AI SDK v6 convertToModelMessages expects UIMessage[] with parts array
     // ------------------------------------------------------------------
-    const historyForModel =
+    const uiMessages: UIMessage[] =
       existingMessages.length > 0
         ? [
-            ...existingMessages,
-            { role: lastMsg.role as string, content: lastMsg.content },
+            ...existingMessages.map((m) => toUIMessage(m.role, m.content)),
+            toUIMessage(lastMsg.role as string, lastMsg.content),
           ]
-        : messages;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const modelMessages = await convertToModelMessages(historyForModel as any);
+        : messages.map((m) => toUIMessage(m.role as string, m.content));
+    const modelMessages = await convertToModelMessages(uiMessages);
 
     // ------------------------------------------------------------------
     // Stream LLM response
     // ------------------------------------------------------------------
     const result = streamText({
-      model: openai("gpt-4o"),
+      model,
       system: systemPrompt,
       messages: modelMessages,
       tools,
       stopWhen: stepCountIs(3),
+      onStepFinish: ({ toolCalls, toolResults }) => {
+        if (toolCalls.length > 0) {
+          logger.info(
+            { toolCalls: toolCalls.map((tc) => ({ name: tc.toolName, args: tc.args })) },
+            "Tool calls executed"
+          )
+        }
+        if (toolResults.length > 0) {
+          logger.info(
+            { toolResults: toolResults.map((tr) => ({ name: tr.toolName, resultPreview: JSON.stringify(tr.result).slice(0, 200) })) },
+            "Tool results received"
+          )
+        }
+      },
       onFinish: async ({ text }) => {
         try {
           await Effect.runPromise(

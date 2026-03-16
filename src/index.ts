@@ -9,10 +9,15 @@ import { createChatRoute } from "./routes/chat.js";
 import { authRoute } from "./routes/auth.js";
 import { createSessionRoutes } from "./routes/sessions.js";
 import { MockProductServiceLive } from "./services/mock-product-service.js";
+import { ScrapingProductServiceLive } from "./services/scraping-product-service.js";
+import { CacheServiceLive } from "./services/cache-service.js";
+import { Layer } from "effect";
 import { ChatSessionServiceLive } from "./services/chat-session-service-live.js";
 
-// Phase 6 will wire ScrapingProductServiceLive when PRODUCT_SERVICE=scraping
-const productServiceLayer = MockProductServiceLive;
+const productServiceLayer =
+  env.PRODUCT_SERVICE === "scraping"
+    ? ScrapingProductServiceLive.pipe(Layer.provide(CacheServiceLive))
+    : MockProductServiceLive;
 
 const app = new OpenAPIHono();
 
@@ -30,6 +35,7 @@ const ALLOWED_ORIGINS = new Set([
   "http://localhost:3000",
   "http://localhost:3001",
   "http://localhost:5173",
+  "null", // file:// origin for local test pages
 ]);
 
 app.use("*", async (c, next) => {
@@ -41,7 +47,7 @@ app.use("*", async (c, next) => {
         "Access-Control-Allow-Origin": origin,
         "Access-Control-Allow-Credentials": "true",
         "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,PATCH,OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type,Authorization,Cookie",
+        "Access-Control-Allow-Headers": "Content-Type,Authorization,Cookie,X-Refresh-Token",
         Vary: "Origin",
       },
     });
@@ -84,6 +90,12 @@ app.doc("/doc", {
 });
 app.get("/swagger", swaggerUI({ url: "/doc" }));
 
+// Serve test chat page
+app.get("/test", async (c) => {
+  const file = Bun.file("test-chat.html");
+  return new Response(await file.text(), { headers: { "Content-Type": "text/html" } });
+});
+
 // Auth middleware for all protected routes
 app.use("/api/*", authMiddleware);
 
@@ -99,6 +111,7 @@ app.route("/api/sessions", createSessionRoutes(ChatSessionServiceLive));
 const server = Bun.serve({
   port: env.PORT,
   fetch: app.fetch,
+  idleTimeout: 120, // seconds — LLM streaming + scraping API calls need more than 10s default
 });
 
 logger.info(

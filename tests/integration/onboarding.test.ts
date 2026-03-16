@@ -16,6 +16,7 @@ import { users } from "../../src/db/schema/users.js"
 import { authMiddleware } from "../../src/middleware/auth.js"
 import { onboardingRoute } from "../../src/routes/onboarding.js"
 import { authRoute } from "../../src/routes/auth.js"
+import { onboardingGate } from "../../src/middleware/onboarding-gate.js"
 
 // ─── Test fixtures ────────────────────────────────────────────────────────────
 
@@ -305,5 +306,70 @@ describe("POST /api/onboarding/step-3", () => {
       }),
     })
     expect(res.status).toBe(400)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Onboarding gate middleware
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Onboarding gate middleware", () => {
+  function buildGatedApp() {
+    const app = new Hono()
+    app.use("/api/*", authMiddleware)
+    app.route("/api/onboarding", onboardingRoute)
+    app.route("/api/auth", authRoute)
+    app.use("/api/chat/*", onboardingGate)
+    app.get("/api/chat/test", (c) => c.json({ ok: true }))
+    return app
+  }
+
+  it("blocks user with incomplete onboarding", async () => {
+    await seedUser({ onboardingStep: 1 })
+    const app = buildGatedApp()
+    const res = await app.request("/api/chat/test", {
+      headers: { Cookie: validCookieHeader() },
+    })
+    expect(res.status).toBe(403)
+    const body = await res.json()
+    expect(body.code).toBe("ONBOARDING_INCOMPLETE")
+    expect(body.step).toBe(1)
+  })
+
+  it("allows user with completed onboarding", async () => {
+    await seedUser({ onboardingStep: 3 })
+    const app = buildGatedApp()
+    const res = await app.request("/api/chat/test", {
+      headers: { Cookie: validCookieHeader() },
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.ok).toBe(true)
+  })
+
+  it("blocks user with step 0", async () => {
+    await seedUser({ onboardingStep: 0 })
+    const app = buildGatedApp()
+    const res = await app.request("/api/chat/test", {
+      headers: { Cookie: validCookieHeader() },
+    })
+    expect(res.status).toBe(403)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Profile includes onboardingStep
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("GET /api/auth/profile includes onboardingStep", () => {
+  it("includes onboardingStep in profile response", async () => {
+    await seedUser({ onboardingStep: 2 })
+    const app = buildApp()
+    const res = await app.request("/api/auth/profile", {
+      headers: { Cookie: validCookieHeader() },
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.onboardingStep).toBe(2)
   })
 })

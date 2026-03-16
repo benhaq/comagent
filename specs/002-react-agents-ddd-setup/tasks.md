@@ -94,11 +94,11 @@
 
 ### Implementation for User Story 3
 
-- [ ] T028 [US3] Implement ChatSessionService Effect service in `src/services/chat-session-service.ts` — Context.Tag with create, list, getWithMessages, rename, delete, addMessage, autoTitle operations. Drizzle queries wrapped in Effect.tryPromise. Typed errors: SessionNotFound, DatabaseError, AIServiceError (for autoTitle).
-- [ ] T029 [US3] Implement session CRUD routes in `src/routes/sessions.ts` — POST /api/sessions (create), GET /api/sessions (list with pagination), GET /api/sessions/:id (get with messages), PATCH /api/sessions/:id (rename), DELETE /api/sessions/:id (204). All with Zod validation via zValidator.
-- [ ] T030 [US3] Implement rate limiting middleware in `src/middleware/rate-limit.ts` — in-memory store, 30 req/min per userId (from auth context), return 429 with `{ error, code }` when exceeded
-- [ ] T031 [US3] Update POST /api/chat in `src/routes/chat.ts` — integrate session resolution (auto-create if no sessionId via ChatSessionService.create), persist user message on receipt (ChatSessionService.addMessage), persist assistant message after stream completes, trigger autoTitle after first exchange
-- [ ] T032 [US3] Update `src/index.ts` — add ChatSessionService layer, mount session routes, add rate-limit middleware
+- [x] T028 [US3] Implement ChatSessionService Effect service in `src/services/chat-session-service.ts` — Context.Tag with create, list, getWithMessages, rename, delete, addMessage, autoTitle operations. Drizzle queries wrapped in Effect.tryPromise. Typed errors: SessionNotFound, DatabaseError, AIServiceError (for autoTitle).
+- [x] T029 [US3] Implement session CRUD routes in `src/routes/sessions.ts` — POST /api/sessions (create), GET /api/sessions (list with pagination), GET /api/sessions/:id (get with messages), PATCH /api/sessions/:id (rename), DELETE /api/sessions/:id (204). All with Zod validation via zValidator.
+- [x] T030 [US3] Implement rate limiting middleware in `src/middleware/rate-limit.ts` — in-memory store, 30 req/min per userId (from auth context), return 429 with `{ error, code }` when exceeded
+- [x] T031 [US3] Update POST /api/chat in `src/routes/chat.ts` — integrate session resolution (auto-create if no sessionId via ChatSessionService.create), persist user message on receipt (ChatSessionService.addMessage), persist assistant message after stream completes, trigger autoTitle after first exchange
+- [x] T032 [US3] Update `src/index.ts` — add ChatSessionService layer, mount session routes, add rate-limit middleware
 
 **Checkpoint**: Session CRUD works. Chat messages persist to sessions. Auto-title generates after first exchange.
 
@@ -108,12 +108,28 @@
 
 **Goal**: Production product data via external scraping microservice with resilience.
 
+**Scraping API contract** (running at `SCRAPING_SERVICE_URL`, default `http://localhost:3000`):
+- `GET /api/search?q={query}&page={n}` → `{ products[], total, page, limit, totalPage, source, query, executionTime }`
+- Product shape: `{ asin, title, description?, brand?, category?, price?, originalPrice?, discountPercent?, rating?, available, images[], productUrl, specifications{}, lastUpdated }`
+- No individual product detail endpoint — search already returns full details (description, specifications, images)
+- Execution time ~30-50s (real-time Amazon scraping) — requires generous timeout
+- `price` is in USD dollars (float), `null` when unavailable
+
+**Key mapping differences** from internal types:
+- `asin` → `ProductCard.id`
+- `title` → `ProductCard.name`
+- `price` (dollars float) → `ProductCard.price` (cents int)
+- `images[0]` → `ProductCard.image`
+- No `sizes` or `colors` arrays in scraping response — leave empty
+- `specifications` map already matches `ProductDetail.specifications`
+
 **Independent Test**: Set `PRODUCT_SERVICE=scraping` → chat query returns real Amazon data → kill scraping service → verify graceful fallback.
 
 ### Implementation for User Story 4
 
-- [ ] T033 [US4] Implement ScrapingProductService in `src/services/scraping-product-service.ts` — HTTP calls to external scraping API, map ScrapingProduct response to internal ProductCard/ProductDetail types, retry logic (3 attempts with exponential backoff via Effect.retry), circuit breaker pattern, fallback to CacheService for cached results on failure. Layer definition implementing ProductService tag.
-- [ ] T034 [US4] Update `src/index.ts` — add ScrapingProductService layer option in provider switch logic (PRODUCT_SERVICE=scraping resolves ScrapingProductService layer, wired with CacheService dependency)
+- [x] T033 [P] [US4] Update `src/types/product.ts` — add `ScrapingProduct` interface matching the external API response shape (asin, title, description, brand, category, price, originalPrice, discountPercent, rating, available, images, productUrl, specifications, lastUpdated). Add `ScrapingSearchResponse` interface for the paginated wrapper (products, total, page, limit, totalPage, source, query, executionTime).
+- [x] T034 [US4] Implement ScrapingProductService in `src/services/scraping-product-service.ts` — HTTP GET to `SCRAPING_SERVICE_URL/api/search?q={query}`, map `ScrapingProduct[]` to `ProductCard[]` (asin→id, title→name, dollars→cents, images[0]→image), map to `ProductDetail` for getDetails (find by asin in cached search results or re-search). 60s fetch timeout. Retry logic (2 attempts with exponential backoff via Effect.retry + Schedule). Cache search results in CacheService (TTL 15min) for subsequent getDetails lookups. Layer definition implementing ProductService tag, requiring CacheService.
+- [x] T035 [US4] Update `src/index.ts` — add ScrapingProductService layer option in provider switch logic (PRODUCT_SERVICE=scraping resolves ScrapingProductService layer, wired with CacheService dependency). Import conditionally.
 
 **Checkpoint**: Scraping service returns real Amazon products. Graceful fallback on failure. Cache populated on successful queries.
 
@@ -123,10 +139,10 @@
 
 **Purpose**: Containerized deployment with multi-stage build, migration automation.
 
-- [ ] T035 [P] Create `.dockerignore` — exclude node_modules, .git, specs/, docs/, tests/, *.md, .env
-- [ ] T036 [P] Create `Dockerfile` with 3-stage build — Stage 1 (deps): `oven/bun:1.1-alpine`, copy package.json + bun.lock, `bun install --frozen-lockfile`. Stage 2 (build): copy src, `bun build --compile --minify src/index.ts --outfile server`. Stage 3 (runtime): alpine base, copy binary, non-root user (bun:bun), HEALTHCHECK, EXPOSE, CMD.
-- [ ] T037 [P] Create `Dockerfile.migrations` — single stage, `oven/bun:1.1-alpine`, install deps, copy src/db, run `bun run src/db/migrate.ts`, exit on completion.
-- [ ] T038 Create `docker-compose.yml` — services: postgres (postgres:16-alpine, healthcheck pg_isready, volume), redis (redis:7-alpine, healthcheck redis-cli ping), migrations (Dockerfile.migrations, depends_on postgres healthy, condition service_completed_successfully), app (Dockerfile, depends_on migrations completed + redis healthy, port mapping, env vars)
+- [ ] T036 [P] Create `.dockerignore` — exclude node_modules, .git, specs/, docs/, tests/, *.md, .env
+- [ ] T037 [P] Create `Dockerfile` with 3-stage build — Stage 1 (deps): `oven/bun:1.1-alpine`, copy package.json + bun.lock, `bun install --frozen-lockfile`. Stage 2 (build): copy src, `bun build --compile --minify src/index.ts --outfile server`. Stage 3 (runtime): alpine base, copy binary, non-root user (bun:bun), HEALTHCHECK, EXPOSE, CMD.
+- [ ] T038 [P] Create `Dockerfile.migrations` — single stage, `oven/bun:1.1-alpine`, install deps, copy src/db, run `bun run src/db/migrate.ts`, exit on completion.
+- [ ] T039 Create `docker-compose.yml` — services: postgres (postgres:16-alpine, healthcheck pg_isready, volume), redis (redis:7-alpine, healthcheck redis-cli ping), migrations (Dockerfile.migrations, depends_on postgres healthy, condition service_completed_successfully), app (Dockerfile, depends_on migrations completed + redis healthy, port mapping, env vars)
 
 **Checkpoint**: `docker compose up` → all services healthy → `curl /health` returns 200 → full functionality works in containers.
 
@@ -136,14 +152,14 @@
 
 **Purpose**: Unit and integration test coverage for core services and routes.
 
-- [ ] T039 [P] Create test fixtures in `tests/fixtures/mock-products.ts` — shared ProductCard and ProductDetail test data
-- [ ] T040 [P] Write unit tests for env validation in `tests/unit/lib/env.test.ts` — valid env passes, missing required vars throws, defaults apply for optional vars
-- [ ] T041 [P] Write unit tests for MockProductService in `tests/unit/services/mock-product-service.test.ts` — search returns products, getDetails returns detail, respects latency simulation
-- [ ] T042 [P] Write unit tests for ChatSessionService in `tests/unit/services/chat-session-service.test.ts` — CRUD operations with Effect test layers (Layer.succeed for DB mock), typed errors for not-found cases
-- [ ] T043 [P] Write unit tests for CacheService in `tests/unit/services/cache-service.test.ts` — get/set/del operations with mock ioredis, typed errors on failure
-- [ ] T044 [P] Write integration test for health endpoint in `tests/integration/health.test.ts` — returns 200 with correct service status shape
-- [ ] T045 Write integration test for chat endpoint in `tests/integration/chat.test.ts` — sends message, receives SSE stream, tool invocations present for product queries
-- [ ] T046 Write integration test for session CRUD in `tests/integration/sessions.test.ts` — create, list, get with messages, rename, delete, cascade delete messages, 401 without auth
+- [ ] T040 [P] Create test fixtures in `tests/fixtures/mock-products.ts` — shared ProductCard and ProductDetail test data
+- [ ] T041 [P] Write unit tests for env validation in `tests/unit/lib/env.test.ts` — valid env passes, missing required vars throws, defaults apply for optional vars
+- [ ] T042 [P] Write unit tests for MockProductService in `tests/unit/services/mock-product-service.test.ts` — search returns products, getDetails returns detail, respects latency simulation
+- [ ] T043 [P] Write unit tests for ChatSessionService in `tests/unit/services/chat-session-service.test.ts` — CRUD operations with Effect test layers (Layer.succeed for DB mock), typed errors for not-found cases
+- [ ] T044 [P] Write unit tests for CacheService in `tests/unit/services/cache-service.test.ts` — get/set/del operations with mock ioredis, typed errors on failure
+- [ ] T045 [P] Write integration test for health endpoint in `tests/integration/health.test.ts` — returns 200 with correct service status shape
+- [ ] T046 Write integration test for chat endpoint in `tests/integration/chat.test.ts` — sends message, receives SSE stream, tool invocations present for product queries
+- [ ] T047 Write integration test for session CRUD in `tests/integration/sessions.test.ts` — create, list, get with messages, rename, delete, cascade delete messages, 401 without auth
 
 **Checkpoint**: `bun test` → all tests pass. Zero untyped catches in service layer (SC-005).
 
@@ -153,10 +169,10 @@
 
 **Purpose**: Final validation, documentation, cleanup.
 
-- [ ] T047 [P] Verify all source files under 200 lines (SC-006) — run line count check across `src/`
-- [ ] T048 [P] Verify PRODUCT_SERVICE env var switch works without code changes (SC-007) — test mock ↔ scraping toggle
-- [ ] T049 [P] Verify all error responses return `{ error, code }` shape (SC-008) — test validation errors, auth errors, not-found errors
-- [ ] T050 Run quickstart.md validation — fresh clone → bun install → configure .env → docker compose up → health check → create session → send chat → verify end-to-end (SC-001: under 5 minutes)
+- [ ] T048 [P] Verify all source files under 200 lines (SC-006) — run line count check across `src/`
+- [ ] T049 [P] Verify PRODUCT_SERVICE env var switch works without code changes (SC-007) — test mock ↔ scraping toggle
+- [ ] T050 [P] Verify all error responses return `{ error, code }` shape (SC-008) — test validation errors, auth errors, not-found errors
+- [ ] T051 Run quickstart.md validation — fresh clone → bun install → configure .env → docker compose up → health check → create session → send chat → verify end-to-end (SC-001: under 5 minutes)
 
 ---
 
@@ -197,8 +213,10 @@
 - US2 and US4 can be developed in parallel (both depend only on Phase 2)
 - US1 is a verification phase, not blocking US2
 
-**Phase 8 parallelism** (5 unit tests can run simultaneously):
-- T039, T040, T041, T042, T043 are all independent
+**Phase 6 parallelism**: T033 (types) can run in parallel, T034 (service) depends on T033, T035 (index.ts) depends on T034
+
+**Phase 8 parallelism** (6 tasks can run simultaneously):
+- T040, T041, T042, T043, T044, T045 are all independent
 
 ---
 

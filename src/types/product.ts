@@ -48,3 +48,35 @@ export interface ProductSearchResult {
   totalResults: number
   query: string
 }
+
+// ---------------------------------------------------------------------------
+// External scraping API response types
+// ---------------------------------------------------------------------------
+
+export interface ScrapingProduct {
+  asin: string
+  title: string
+  description?: string
+  brand?: string
+  category?: string
+  price?: number | null
+  originalPrice?: number | null
+  discountPercent?: number | null
+  rating?: number | null
+  available: boolean
+  images: string[]
+  productUrl: string
+  specifications: Record<string, string>
+  lastUpdated: string
+}
+
+export interface ScrapingSearchResponse {
+  products: ScrapingProduct[]
+  total: number
+  page: number
+  limit: number
+  totalPage: number
+  source: string
+  query: string
+  executionTime: number
+}

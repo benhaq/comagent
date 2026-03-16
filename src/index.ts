@@ -1,20 +1,20 @@
-import { OpenAPIHono } from "@hono/zod-openapi"
-import { swaggerUI } from "@hono/swagger-ui"
-import { env } from "./lib/env.js"
-import logger from "./lib/logger.js"
-import { authMiddleware } from "./middleware/auth.js"
-import { errorHandler } from "./middleware/error-handler.js"
-import { healthRoute } from "./routes/health.js"
-import { createChatRoute } from "./routes/chat.js"
-import { authRoute } from "./routes/auth.js"
-import { createSessionRoutes } from "./routes/sessions.js"
-import { MockProductServiceLive } from "./services/mock-product-service.js"
-import { ChatSessionServiceLive } from "./services/chat-session-service-live.js"
+import { OpenAPIHono } from "@hono/zod-openapi";
+import { swaggerUI } from "@hono/swagger-ui";
+import { env } from "./lib/env.js";
+import logger from "./lib/logger.js";
+import { authMiddleware } from "./middleware/auth.js";
+import { errorHandler } from "./middleware/error-handler.js";
+import { healthRoute } from "./routes/health.js";
+import { createChatRoute } from "./routes/chat.js";
+import { authRoute } from "./routes/auth.js";
+import { createSessionRoutes } from "./routes/sessions.js";
+import { MockProductServiceLive } from "./services/mock-product-service.js";
+import { ChatSessionServiceLive } from "./services/chat-session-service-live.js";
 
 // Phase 6 will wire ScrapingProductServiceLive when PRODUCT_SERVICE=scraping
-const productServiceLayer = MockProductServiceLive
+const productServiceLayer = MockProductServiceLive;
 
-const app = new OpenAPIHono()
+const app = new OpenAPIHono();
 
 // Register cookie auth security scheme for OpenAPI docs
 app.openAPIRegistry.registerComponent("securitySchemes", "CookieAuth", {
@@ -22,7 +22,7 @@ app.openAPIRegistry.registerComponent("securitySchemes", "CookieAuth", {
   in: "cookie",
   name: "crossmint-jwt",
   description: "Crossmint JWT session cookie",
-})
+});
 
 // CORS — allow specific origins; credentials:true requires explicit origin echo, never wildcard
 const ALLOWED_ORIGINS = new Set([
@@ -30,10 +30,10 @@ const ALLOWED_ORIGINS = new Set([
   "http://localhost:3000",
   "http://localhost:3001",
   "http://localhost:5173",
-])
+]);
 
 app.use("*", async (c, next) => {
-  const origin = c.req.header("Origin") ?? ""
+  const origin = c.req.header("Origin") ?? "";
   if (c.req.method === "OPTIONS" && ALLOWED_ORIGINS.has(origin)) {
     return new Response(null, {
       status: 204,
@@ -42,36 +42,36 @@ app.use("*", async (c, next) => {
         "Access-Control-Allow-Credentials": "true",
         "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,PATCH,OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type,Authorization,Cookie",
-        "Vary": "Origin",
+        Vary: "Origin",
       },
-    })
+    });
   }
-  await next()
+  await next();
   if (ALLOWED_ORIGINS.has(origin)) {
-    c.res.headers.set("Access-Control-Allow-Origin", origin)
-    c.res.headers.set("Access-Control-Allow-Credentials", "true")
-    c.res.headers.set("Vary", "Origin")
+    c.res.headers.set("Access-Control-Allow-Origin", origin);
+    c.res.headers.set("Access-Control-Allow-Credentials", "true");
+    c.res.headers.set("Vary", "Origin");
   }
-})
+});
 
 // Pino HTTP request logger
 app.use("*", async (c, next) => {
-  const start = Date.now()
-  await next()
-  const ms = Date.now() - start
-  const status = c.res.status
-  const logFn = status >= 500 ? "error" : status >= 400 ? "warn" : "info"
+  const start = Date.now();
+  await next();
+  const ms = Date.now() - start;
+  const status = c.res.status;
+  const logFn = status >= 500 ? "error" : status >= 400 ? "warn" : "info";
   logger[logFn](
     { method: c.req.method, path: c.req.path, status, ms },
-    `${c.req.method} ${c.req.path} ${status} ${ms}ms`
-  )
-})
+    `${c.req.method} ${c.req.path} ${status} ${ms}ms`,
+  );
+});
 
 // Global error handler
-app.onError(errorHandler)
+app.onError(errorHandler);
 
 // Public routes (no auth required)
-app.route("/health", healthRoute)
+app.route("/health", healthRoute);
 
 // OpenAPI spec + Swagger UI (public)
 app.doc("/doc", {
@@ -81,22 +81,25 @@ app.doc("/doc", {
     version: "0.1.0",
     description: "AI Shopping Assistant — ReAct chat agent backend",
   },
-})
-app.get("/swagger", swaggerUI({ url: "/doc" }))
+});
+app.get("/swagger", swaggerUI({ url: "/doc" }));
 
 // Auth middleware for all protected routes
-app.use("/api/*", authMiddleware)
+app.use("/api/*", authMiddleware);
 
 // Protected API routes
-app.route("/api/auth", authRoute)
-app.route("/api/chat", createChatRoute(productServiceLayer, ChatSessionServiceLive))
-app.route("/api/sessions", createSessionRoutes(ChatSessionServiceLive))
+app.route("/api/auth", authRoute);
+app.route(
+  "/api/chat",
+  createChatRoute(productServiceLayer, ChatSessionServiceLive),
+);
+app.route("/api/sessions", createSessionRoutes(ChatSessionServiceLive));
 
 // Start server
 const server = Bun.serve({
   port: env.PORT,
   fetch: app.fetch,
-})
+});
 
 logger.info(
   {
@@ -104,8 +107,8 @@ logger.info(
     productService: env.PRODUCT_SERVICE,
     nodeEnv: env.NODE_ENV,
   },
-  `Hono server listening on port ${env.PORT}`
-)
+  `Hono server listening on port ${env.PORT}`,
+);
 
-export { app }
-export type AppServer = typeof server
+export { app };
+export type AppServer = typeof server;

@@ -6,11 +6,15 @@ const envSchema = z.object({
   OPENAI_API_KEY: z.string().min(1, "OPENAI_API_KEY is required"),
   CROSSMINT_SERVER_API_KEY: z.string().min(1, "CROSSMINT_SERVER_API_KEY is required"),
 
-  // Optional — legacy stub auth token (no longer required)
+  // Optional — legacy stub auth token (no longer required; Crossmint JWT replaces it)
   AUTH_TOKEN: z.string().optional(),
 
   // Optional — Crossmint API base URL (defaults to staging)
   CROSSMINT_API_URL: z.string().default("https://staging.crossmint.com"),
+
+  // LLM — OpenRouter as unified provider
+  OPENROUTER_API_KEY: z.string().min(1, "OPENROUTER_API_KEY is required"),
+  LLM_MODEL: z.string().default("openai/gpt-4o"),
 
   // Optional — Neon direct endpoint for migrations (falls back to DATABASE_URL)
   DATABASE_URL_DIRECT: z.string().optional(),

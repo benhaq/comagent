@@ -83,3 +83,5 @@ prompt.md
 .claude/**
 .specify/**
 plans/**
+.worktrees/
+specs/**

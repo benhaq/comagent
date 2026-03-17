@@ -9,8 +9,24 @@ import {
 import { getCrossmintOrder } from "../lib/crossmint-client.js"
 import { OrderService } from "./order-service.js"
 import type { OrderServiceShape, OrderSummary } from "./order-service.js"
+import type { Order } from "../db/schema/orders.js"
 
 const dbError = (cause: unknown) => new DatabaseError({ cause })
+
+function mapDepositOrder(local: Order): OrderSummary {
+  return {
+    orderId: local.id,
+    type: "deposit",
+    crossmintOrderId: null,
+    phase: "completed",
+    lineItems: [],
+    payment: { status: "funded", currency: "usdc" },
+    amountPas: local.amountPas,
+    amountUsdc: local.amountUsdc,
+    polkadotTxHash: local.polkadotTxHash,
+    createdAt: local.createdAt.toISOString(),
+  }
+}
 
 function mapCrossmintOrder(
   localOrderId: string,
@@ -25,6 +41,7 @@ function mapCrossmintOrder(
 ): OrderSummary {
   return {
     orderId: localOrderId,
+    type: "checkout",
     crossmintOrderId,
     phase: crossmintOrder.phase,
     lineItems: crossmintOrder.lineItems ?? [],
@@ -55,7 +72,12 @@ const impl: OrderServiceShape = {
       const results: OrderSummary[] = []
 
       for (const local of localOrders) {
-        const crossmintOrder = yield* getCrossmintOrder(local.crossmintOrderId).pipe(
+        if (local.type === "deposit") {
+          results.push(mapDepositOrder(local))
+          continue
+        }
+
+        const crossmintOrder = yield* getCrossmintOrder(local.crossmintOrderId!).pipe(
           Effect.catchAll(() => Effect.succeed(null))
         )
 
@@ -63,7 +85,7 @@ const impl: OrderServiceShape = {
           results.push(
             mapCrossmintOrder(
               local.id,
-              local.crossmintOrderId,
+              local.crossmintOrderId!,
               crossmintOrder,
               local.createdAt.toISOString()
             )
@@ -72,6 +94,7 @@ const impl: OrderServiceShape = {
           // Crossmint fetch failed — return minimal local data
           results.push({
             orderId: local.id,
+            type: "checkout",
             crossmintOrderId: local.crossmintOrderId,
             phase: "unknown",
             lineItems: [],
@@ -100,11 +123,15 @@ const impl: OrderServiceShape = {
         return yield* Effect.fail(new OrderNotFoundError({ orderId }))
       }
 
-      const crossmintOrder = yield* getCrossmintOrder(local.crossmintOrderId)
+      if (local.type === "deposit") {
+        return mapDepositOrder(local)
+      }
+
+      const crossmintOrder = yield* getCrossmintOrder(local.crossmintOrderId!)
 
       return mapCrossmintOrder(
         local.id,
-        local.crossmintOrderId,
+        local.crossmintOrderId!,
         crossmintOrder,
         local.createdAt.toISOString()
       )

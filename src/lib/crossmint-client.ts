@@ -1,6 +1,6 @@
 import { Effect } from "effect"
 import { env } from "./env.js"
-import { CheckoutOrderCreationError, CheckoutPaymentError } from "./errors.js"
+import { CheckoutOrderCreationError, CheckoutPaymentError, DepositFundingError } from "./errors.js"
 import logger from "./logger.js"
 
 // ---------------------------------------------------------------------------
@@ -89,7 +89,7 @@ export const createCrossmintOrder = (
         payment: {
           receiptEmail: params.email,
           method: "base-sepolia",
-          currency: "usdc",
+          currency: "credit",
           payerAddress: params.payerAddress,
         },
         lineItems: params.lineItems,
@@ -185,4 +185,53 @@ export const getCrossmintOrder = (
       return data.order as CrossmintOrderResponse["order"]
     },
     catch: (cause) => new CheckoutOrderCreationError({ cause }),
+  })
+
+// ---------------------------------------------------------------------------
+// Fund wallet via staging faucet (USDXM)
+// ---------------------------------------------------------------------------
+
+export interface CrossmintFundWalletResponse {
+  token: string
+  decimals: number
+  balances: {
+    base?: string
+    total: string
+  }
+}
+
+export const fundCrossmintWallet = (
+  walletLocator: string,
+  amount: number,
+  chain: string = "base-sepolia"
+): Effect.Effect<CrossmintFundWalletResponse[], DepositFundingError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const url = `${baseUrl()}/api/v1-alpha2/wallets/${walletLocator}/balances`
+      const body = {
+        amount,
+        token: "usdxm",
+        chain,
+      }
+
+      logger.info({ walletLocator, amount, chain }, "Funding Crossmint wallet via staging faucet")
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30_000),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        logger.error({ status: res.status, data, walletLocator }, "Crossmint wallet funding failed")
+        throw new Error(data?.message ?? `Wallet funding failed: ${res.status}`)
+      }
+
+      logger.info({ walletLocator, amount }, "Crossmint wallet funded")
+      return data as CrossmintFundWalletResponse[]
+    },
+    catch: (cause) => new DepositFundingError({ cause }),
   })

@@ -182,7 +182,8 @@ export const getCrossmintOrder = (
         throw new Error(data?.message ?? `Get order failed: ${res.status}`)
       }
 
-      return data.order as CrossmintOrderResponse["order"]
+      // GET response returns order at top level (unlike POST which wraps in { order })
+      return (data.order ?? data) as CrossmintOrderResponse["order"]
     },
     catch: (cause) => new CheckoutOrderCreationError({ cause }),
   })

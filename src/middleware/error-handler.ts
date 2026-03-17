@@ -1,4 +1,5 @@
 import type { Context } from "hono"
+import { HTTPException } from "hono/http-exception"
 import {
   ValidationError,
   ProductNotFound,
@@ -13,6 +14,13 @@ import {
 type ErrorResponse = { error: string; code: string }
 
 export function errorHandler(err: Error, c: Context) {
+  if (err instanceof HTTPException) {
+    return c.json<ErrorResponse>(
+      { error: err.message, code: "HTTP_ERROR" },
+      err.status
+    )
+  }
+
   if (err instanceof ValidationError) {
     return c.json<ErrorResponse>(
       { error: err.message, code: "VALIDATION_ERROR" },

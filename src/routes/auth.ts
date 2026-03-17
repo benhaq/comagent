@@ -7,6 +7,7 @@ import type { AuthVariables } from "../middleware/auth.js"
 import { crossmintAuth } from "../lib/crossmint.js"
 import logger from "../lib/logger.js"
 import { UserProfileSchema, ErrorSchema, errorResponse, commonErrors, validationHook } from "../lib/openapi-schemas.js"
+import { SESSION_COOKIE_OPTS, COOKIE_NAMES } from "../lib/cookies.js"
 
 const security = [{ CookieAuth: [] }]
 
@@ -54,6 +55,7 @@ const setSessionRoute = createRoute({
           schema: z.object({
             jwt: z.string().min(1),
             refreshToken: z.string().optional(),
+            email: z.string().email().optional(),
           }),
         },
       },
@@ -74,7 +76,7 @@ export const authRoute = new OpenAPIHono<{ Variables: AuthVariables }>({ default
 
 // Public — session setup (no auth middleware; exempted in index.ts)
 authRoute.openapi(setSessionRoute, async (c) => {
-  const { jwt, refreshToken } = c.req.valid("json")
+  const { jwt, refreshToken, email } = c.req.valid("json")
 
   try {
     await crossmintAuth.getSession({ jwt, refreshToken: refreshToken ?? "" })
@@ -83,10 +85,12 @@ authRoute.openapi(setSessionRoute, async (c) => {
     return c.json({ error: "Invalid JWT", code: "UNAUTHORIZED" }, 401) as never
   }
 
-  const cookieOpts = { httpOnly: true, path: "/", sameSite: "Lax" as const }
-  setCookie(c, "crossmint-jwt", jwt, cookieOpts)
+  setCookie(c, COOKIE_NAMES.jwt, jwt, SESSION_COOKIE_OPTS)
   if (refreshToken) {
-    setCookie(c, "crossmint-refresh-token", refreshToken, cookieOpts)
+    setCookie(c, COOKIE_NAMES.refreshToken, refreshToken, SESSION_COOKIE_OPTS)
+  }
+  if (email) {
+    setCookie(c, COOKIE_NAMES.email, email, SESSION_COOKIE_OPTS)
   }
 
   return c.json({ success: true })
@@ -118,7 +122,8 @@ authRoute.openapi(profileRoute, async (c) => {
 
 // Protected — logout
 authRoute.openapi(logoutRoute, (c) => {
-  deleteCookie(c, "crossmint-jwt", { path: "/", sameSite: "Lax" })
-  deleteCookie(c, "crossmint-refresh-token", { path: "/", sameSite: "Lax" })
+  deleteCookie(c, COOKIE_NAMES.jwt, SESSION_COOKIE_OPTS)
+  deleteCookie(c, COOKIE_NAMES.refreshToken, SESSION_COOKIE_OPTS)
+  deleteCookie(c, COOKIE_NAMES.email, SESSION_COOKIE_OPTS)
   return c.json({ success: true })
 })

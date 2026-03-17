@@ -4,7 +4,8 @@ const CROSSMINT_BASE = "https://staging.crossmint.com";
 const AUTH_URL = `${CROSSMINT_BASE}/api/2024-09-26/session/sdk/auth`;
 
 // Client API key — safe to expose (it's a public client key, not a server secret)
-const CLIENT_API_KEY = "CROSSMINT_CLIENT_API_KEY";
+const CLIENT_API_KEY =
+  "ck_staging_65yxv1FqmiT7gVyKPQzUa3bJ4qYcUPuKdkJ5wovyVDFzS9X7S2jPhJBNuRwXp4Mbg398b3wDRx38GZBvfh7QZQ3JvSnEz2DLPqrvbsFQ5DyXcZyCFoQR2UjnmDmKxWrmpnxuH162RjhyyWNYQtXx3rDBaQYZgGFKpiFkHd98WMPZ7TTczvjmczFmFyBDA18fkztm1PefDtjJAMoabC2wEsnq";
 
 interface LoginPanelProps {
   onLoggedIn: () => void;
@@ -99,6 +100,7 @@ export function LoginPanel({ onLoggedIn }: LoginPanelProps) {
         body: JSON.stringify({
           jwt: refreshData.jwt,
           refreshToken: refreshData.refresh?.secret ?? "",
+          email: email.trim(),
         }),
       });
       if (!sessionRes.ok) {

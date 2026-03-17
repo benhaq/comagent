@@ -240,8 +240,10 @@ export const OrderSummarySchema = z
       .string()
       .uuid()
       .openapi({ example: "d1e2f3a4-b5c6-7890-defg-234567890123" }),
+    type: z.string().openapi({ example: "checkout" }),
     crossmintOrderId: z
       .string()
+      .nullable()
       .openapi({ example: "ed34a579-7fbc-4509-b8d8-9e61954cd555" }),
     phase: z.string().openapi({ example: "completed" }),
     lineItems: z.array(z.unknown()),
@@ -278,6 +280,33 @@ export const OrderIdParamSchema = z.object({
       example: "d1e2f3a4-b5c6-7890-defg-234567890123",
     }),
 });
+
+// ─── Deposit schemas ───────────────────────────────────────────────────────
+
+export const DepositConfirmRequestSchema = z
+  .object({
+    // Raw PAS amount in planck (10 decimals). Use string to avoid JS integer precision loss.
+    // e.g., "10000000000" = 1 PAS, "1000000000000" = 100 PAS
+    amountPAS: z.string().regex(/^\d+$/, "Must be a non-negative integer string").openapi({ example: "1000000000000" }),
+    transactionHash: z.string().min(1).openapi({ example: "0xabc123def456..." }),
+  })
+  .openapi("DepositConfirmRequest")
+
+export const DepositConfirmResponseSchema = z
+  .object({
+    orderId: z.string().uuid().openapi({ example: "d1e2f3a4-b5c6-7890-defg-234567890123" }),
+    amountPAS: z.string().openapi({ example: "100" }),
+    amountUSDC: z.string().openapi({ example: "10.00" }),
+    crossmintFundingStatus: z.string().openapi({ example: "funded" }),
+  })
+  .openapi("DepositConfirmResponse")
+
+export const UserIdParamSchema = z.object({
+  userId: z.string().uuid().openapi({
+    param: { name: "userId", in: "path" },
+    example: "f0e1d2c3-b4a5-6789-0abc-def123456789",
+  }),
+})
 
 // ─── Shared validation hook ──────────────────────────────────────────────────
 

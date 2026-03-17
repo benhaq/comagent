@@ -136,7 +136,11 @@ export class CartItemNotFoundError extends Data.TaggedError("CartItemNotFoundErr
  */
 export class CheckoutNoWalletError extends Data.TaggedError("CheckoutNoWalletError")<{
   userId: string
-}> {}
+}> {
+  get message() {
+    return "User has no wallet provisioned"
+  }
+}
 
 /**
  * Raised when user profile is missing required shipping address fields.

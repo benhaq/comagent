@@ -1,4 +1,5 @@
 import { Effect, Layer } from "effect"
+import BigNumber from "bignumber.js"
 import { eq } from "drizzle-orm"
 import { db } from "../db/client.js"
 import { users } from "../db/schema/users.js"
@@ -39,13 +40,21 @@ const impl: DepositServiceShape = {
         return yield* Effect.fail(new CheckoutNoWalletError({ userId }))
       }
 
-      // 3. Convert PAS → USDC
-      const amountUSDC = amountPAS * env.PAS_TO_USDC_RATE
-      const amountUSDCStr = amountUSDC.toFixed(2)
+      // 3. Convert PAS planck → USDC ether using BigNumber
+      //    PAS has 10 decimals (planck), USDC has 6 decimals (micro)
+      //    amountPAS is raw planck string, e.g. "1000000000000" = 100 PAS
+      const PAS_DECIMALS = 10
+      const USDC_DECIMALS = 6
+      const pasHuman = new BigNumber(amountPAS).shiftedBy(-PAS_DECIMALS)
+      const usdcHuman = pasHuman.multipliedBy(env.PAS_TO_USDC_RATE)
+      // Ether form = human-readable decimal (what Crossmint staging faucet expects)
+      const usdcEther = usdcHuman.toNumber()
+      const amountPasStr = pasHuman.toFixed(PAS_DECIMALS)
+      const amountUsdcStr = usdcHuman.toFixed(USDC_DECIMALS)
 
-      // 4. Fund wallet via Crossmint staging faucet
+      // 4. Fund wallet via Crossmint staging faucet (expects ether form, not wei)
       const walletLocator = `email:${user.email}:evm`
-      yield* fundCrossmintWallet(walletLocator, amountUSDC)
+      yield* fundCrossmintWallet(walletLocator, usdcEther)
 
       // 5. Insert deposit order record (unique constraint on polkadot_tx_hash guards duplicates)
       const depositOrder = yield* Effect.tryPromise({
@@ -55,8 +64,8 @@ const impl: DepositServiceShape = {
             .values({
               userId,
               type: "deposit",
-              amountPas: String(amountPAS),
-              amountUsdc: amountUSDCStr,
+              amountPas: amountPasStr,
+              amountUsdc: amountUsdcStr,
               polkadotTxHash: transactionHash,
             })
             .returning()
@@ -72,14 +81,14 @@ const impl: DepositServiceShape = {
       })
 
       logger.info(
-        { userId, orderId: depositOrder.id, amountPAS, amountUSDC: amountUSDCStr, transactionHash },
+        { userId, orderId: depositOrder.id, amountPas: amountPasStr, amountUsdc: amountUsdcStr, transactionHash },
         "Deposit funded and recorded"
       )
 
       return {
         orderId: depositOrder.id,
-        amountPAS: String(amountPAS),
-        amountUSDC: amountUSDCStr,
+        amountPAS: amountPasStr,
+        amountUSDC: amountUsdcStr,
         crossmintFundingStatus: "funded" as const,
       }
     }),

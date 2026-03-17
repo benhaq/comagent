@@ -224,7 +224,9 @@ export const OrderIdParamSchema = z.object({
 
 export const DepositConfirmRequestSchema = z
   .object({
-    amountPAS: z.number().positive().openapi({ example: 100 }),
+    // Raw PAS amount in planck (10 decimals). Use string to avoid JS integer precision loss.
+    // e.g., "10000000000" = 1 PAS, "1000000000000" = 100 PAS
+    amountPAS: z.string().regex(/^\d+$/, "Must be a non-negative integer string").openapi({ example: "1000000000000" }),
     transactionHash: z.string().min(1).openapi({ example: "0xabc123def456..." }),
   })
   .openapi("DepositConfirmRequest")

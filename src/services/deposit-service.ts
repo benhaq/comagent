@@ -16,7 +16,7 @@ export interface DepositResult {
 export interface DepositServiceShape {
   confirmDeposit(
     userId: string,
-    amountPAS: number,
+    amountPAS: string,
     transactionHash: string,
   ): Effect.Effect<
     DepositResult,

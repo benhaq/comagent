@@ -8,6 +8,7 @@ import { sendChat, type ChatMessage, type SSEEvent } from "./lib/sse-chat"
 import { fetchCart, addToCart, removeFromCart, type CartItemResponse } from "./lib/cart-api"
 import { registry, CartContext } from "./registry"
 import { CartPanel } from "./components/CartPanel"
+import { LoginPanel } from "./components/LoginPanel"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -24,9 +25,7 @@ function nextId() { return ++msgId }
 // ─── App ────────────────────────────────────────────────────────────────────
 
 export function App() {
-  const [jwt, setJwt] = useState("")
-  const [refreshToken, setRefreshToken] = useState("")
-  const [apiUrl, setApiUrl] = useState("http://localhost:3001/api/chat")
+  const [loggedIn, setLoggedIn] = useState(false)
   const [input, setInput] = useState("")
   const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [sending, setSending] = useState(false)
@@ -62,20 +61,41 @@ export function App() {
     setTimeout(scrollToBottom, 50)
   }, [scrollToBottom])
 
-  // Fetch cart when JWT is set
-  useEffect(() => {
-    if (!jwt) { setCartItems([]); return }
+  const loadCart = useCallback(() => {
     setCartLoading(true)
-    fetchCart(apiUrl, jwt)
+    fetchCart()
       .then(setCartItems)
-      .catch(() => {}) // silently fail on initial load
+      .catch(() => {})
       .finally(() => setCartLoading(false))
-  }, [jwt, apiUrl])
+  }, [])
+
+  // Check if already logged in on mount
+  useEffect(() => {
+    fetch("/api/auth/profile").then((res) => {
+      if (res.ok) {
+        setLoggedIn(true)
+        loadCart()
+      }
+    }).catch(() => {})
+  }, [loadCart])
+
+  const handleLoggedIn = useCallback(() => {
+    setLoggedIn(true)
+    loadCart()
+  }, [loadCart])
+
+  const handleLogout = useCallback(async () => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {})
+    setLoggedIn(false)
+    setCartItems([])
+    setMessages([])
+    setSessionId(null)
+    conversationRef.current = []
+  }, [])
 
   const handleAddToCart = useCallback(async (product: ProductCardProps) => {
-    if (!jwt) return
     try {
-      const item = await addToCart(apiUrl, jwt, {
+      const item = await addToCart({
         productId: product.id,
         productName: product.name,
         price: product.price,
@@ -87,24 +107,22 @@ export function App() {
       })
       setCartItems((prev) => [item, ...prev])
     } catch (err: any) {
-      // Re-throw so ProductCard can show the error
       throw err
     }
-  }, [jwt, apiUrl])
+  }, [])
 
   const handleRemoveFromCart = useCallback(async (itemId: string) => {
-    if (!jwt) return
     try {
-      await removeFromCart(apiUrl, jwt, itemId)
+      await removeFromCart(itemId)
       setCartItems((prev) => prev.filter((i) => i.id !== itemId))
     } catch {
       // ignore
     }
-  }, [jwt, apiUrl])
+  }, [])
 
   const handleSend = useCallback(async () => {
     const text = input.trim()
-    if (!text || !jwt) return
+    if (!text) return
 
     setInput("")
     setSending(true)
@@ -126,7 +144,6 @@ export function App() {
           })
           break
         case "tool-result": {
-          // Check if this is a product tool → build spec → render via Renderer
           if (evt.toolName === "searchProducts") {
             const spec = buildProductGridSpec(evt.result as ProductSearchResult)
             addMessage({ role: "assistant", content: "", spec: spec as any })
@@ -155,15 +172,13 @@ export function App() {
 
     try {
       await sendChat({
-        url: apiUrl,
-        jwt,
-        refreshToken: refreshToken || undefined,
+        url: "/api/chat",
+        jwt: "",  // unused — auth via httpOnly cookie
         messages: conversationRef.current,
         sessionId: sessionId ?? undefined,
         onEvent,
         onSessionId: (id) => {
           setSessionId(id)
-          addMessage({ role: "system", content: `Session: ${id}` })
         },
       })
     } catch (err: any) {
@@ -171,38 +186,40 @@ export function App() {
     }
 
     setSending(false)
-  }, [input, jwt, refreshToken, apiUrl, sessionId, addMessage, updateLastAssistant])
+  }, [input, sessionId, addMessage, updateLastAssistant])
+
+  if (!loggedIn) {
+    return (
+      <div style={{
+        display: "flex", flexDirection: "column", height: "100vh",
+        background: "#1a1a2e", color: "#eee", fontFamily: "system-ui, sans-serif",
+      }}>
+        <LoginPanel onLoggedIn={handleLoggedIn} />
+      </div>
+    )
+  }
 
   return (
     <div style={{
       display: "flex", flexDirection: "column", height: "100vh",
       background: "#1a1a2e", color: "#eee", fontFamily: "system-ui, sans-serif",
     }}>
-      {/* Config bar */}
+      {/* Top bar */}
       <div style={{
         padding: "10px 16px", background: "#16213e",
-        borderBottom: "1px solid #333", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap",
+        borderBottom: "1px solid #333", display: "flex", gap: 8, alignItems: "center",
       }}>
-        <label style={{ fontSize: 13, color: "#aaa" }}>API:</label>
-        <input
-          value={apiUrl}
-          onChange={(e) => setApiUrl(e.target.value)}
-          style={{ width: 280, background: "#0f3460", border: "1px solid #444", color: "#eee", padding: "6px 10px", borderRadius: 4, fontSize: 13 }}
-        />
-        <label style={{ fontSize: 13, color: "#aaa" }}>JWT:</label>
-        <input
-          value={jwt}
-          onChange={(e) => setJwt(e.target.value)}
-          placeholder="Paste crossmint-jwt here"
-          style={{ flex: 1, minWidth: 200, background: "#0f3460", border: "1px solid #444", color: "#eee", padding: "6px 10px", borderRadius: 4, fontSize: 13 }}
-        />
-        <label style={{ fontSize: 13, color: "#aaa" }}>Refresh:</label>
-        <input
-          value={refreshToken}
-          onChange={(e) => setRefreshToken(e.target.value)}
-          placeholder="refresh token (optional)"
-          style={{ width: 260, background: "#0f3460", border: "1px solid #444", color: "#eee", padding: "6px 10px", borderRadius: 4, fontSize: 13 }}
-        />
+        <span style={{ fontSize: 13, color: "#4ade80" }}>Logged in</span>
+        <button
+          onClick={handleLogout}
+          style={{
+            background: "#333", border: "1px solid #444", color: "#f87171",
+            padding: "6px 14px", borderRadius: 4, fontSize: 13, cursor: "pointer",
+          }}
+        >
+          Logout
+        </button>
+        <div style={{ flex: 1 }} />
         <button
           onClick={() => setCartOpen(!cartOpen)}
           style={{
@@ -222,7 +239,6 @@ export function App() {
           <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
             <CartContext.Provider value={{ onAddToCart: handleAddToCart }}>
               {messages.map((msg) => {
-                // Render json-render spec via <Renderer>
                 if (msg.spec) {
                   return (
                     <div key={msg.id} style={{ alignSelf: "flex-start", maxWidth: "90%" }}>
@@ -279,7 +295,8 @@ export function App() {
               disabled={sending}
               style={{
                 background: sending ? "#555" : "#e94560", color: "#fff",
-                border: "none", padding: "10px 20px", borderRadius: 8, cursor: sending ? "not-allowed" : "pointer", fontSize: 14,
+                border: "none", padding: "10px 20px", borderRadius: 8,
+                cursor: sending ? "not-allowed" : "pointer", fontSize: 14,
               }}
             >
               Send

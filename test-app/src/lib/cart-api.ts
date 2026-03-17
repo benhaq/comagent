@@ -22,39 +22,19 @@ export interface AddToCartPayload {
   retailer: string
 }
 
-function cartBase(apiUrl: string): string {
-  // apiUrl is like "http://localhost:3001/api/chat" → replace /chat with /cart
-  return apiUrl.replace(/\/chat\/?$/, "/cart")
-}
-
-/** Set the crossmint-jwt cookie so fetch with credentials: "include" picks it up. */
-function ensureCookie(jwt: string): void {
-  if (!document.cookie.includes("crossmint-jwt=")) {
-    document.cookie = `crossmint-jwt=${jwt}; path=/`
-  }
-}
-
-export async function fetchCart(
-  apiUrl: string,
-  jwt: string,
-): Promise<CartItemResponse[]> {
-  ensureCookie(jwt)
-  const res = await fetch(cartBase(apiUrl), { credentials: "include" })
+export async function fetchCart(): Promise<CartItemResponse[]> {
+  const res = await fetch("/api/cart")
   if (!res.ok) throw new Error(`Failed to fetch cart: ${res.status}`)
   const data = await res.json()
   return data.items
 }
 
 export async function addToCart(
-  apiUrl: string,
-  jwt: string,
   item: AddToCartPayload,
 ): Promise<CartItemResponse> {
-  ensureCookie(jwt)
-  const res = await fetch(cartBase(apiUrl), {
+  const res = await fetch("/api/cart", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    credentials: "include",
     body: JSON.stringify(item),
   })
   if (!res.ok) {
@@ -67,15 +47,7 @@ export async function addToCart(
   return res.json()
 }
 
-export async function removeFromCart(
-  apiUrl: string,
-  jwt: string,
-  itemId: string,
-): Promise<void> {
-  ensureCookie(jwt)
-  const res = await fetch(`${cartBase(apiUrl)}/${itemId}`, {
-    method: "DELETE",
-    credentials: "include",
-  })
+export async function removeFromCart(itemId: string): Promise<void> {
+  const res = await fetch(`/api/cart/${itemId}`, { method: "DELETE" })
   if (!res.ok) throw new Error(`Failed to remove item: ${res.status}`)
 }

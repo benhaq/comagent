@@ -7,11 +7,15 @@ import type {
 
 export interface OrderSummary {
   orderId: string
-  crossmintOrderId: string
+  type: string
+  crossmintOrderId: string | null
   phase: string
   lineItems: unknown[]
   payment: { status: string; currency: string }
   quote?: { totalPrice?: { amount: string; currency: string } }
+  amountPas?: string | null
+  amountUsdc?: string | null
+  polkadotTxHash?: string | null
   createdAt: string
 }
 

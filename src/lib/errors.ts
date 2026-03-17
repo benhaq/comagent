@@ -35,7 +35,11 @@ export class AIServiceError extends Data.TaggedError("AIServiceError")<{
  */
 export class DatabaseError extends Data.TaggedError("DatabaseError")<{
   cause?: unknown
-}> {}
+}> {
+  get message() {
+    return typeof this.cause === "string" ? this.cause : "Database operation failed"
+  }
+}
 
 /**
  * Raised when input fails schema or business-rule validation.
@@ -147,35 +151,55 @@ export class CheckoutNoWalletError extends Data.TaggedError("CheckoutNoWalletErr
  */
 export class CheckoutMissingAddressError extends Data.TaggedError("CheckoutMissingAddressError")<{
   userId: string
-}> {}
+}> {
+  get message() {
+    return "User is missing required shipping address"
+  }
+}
 
 /**
  * Raised when user's wallet has insufficient USDC for the order.
  */
 export class InsufficientFundsError extends Data.TaggedError("InsufficientFundsError")<{
   orderId?: string
-}> {}
+}> {
+  get message() {
+    return "Insufficient USDC balance to complete checkout"
+  }
+}
 
 /**
  * Raised when Crossmint order creation API fails.
  */
 export class CheckoutOrderCreationError extends Data.TaggedError("CheckoutOrderCreationError")<{
   cause?: unknown
-}> {}
+}> {
+  get message() {
+    return "Failed to create Crossmint order"
+  }
+}
 
 /**
  * Raised when Crossmint transaction signing fails.
  */
 export class CheckoutPaymentError extends Data.TaggedError("CheckoutPaymentError")<{
   cause?: unknown
-}> {}
+}> {
+  get message() {
+    return "Failed to sign Crossmint transaction"
+  }
+}
 
 /**
  * Raised when an order is not found in local DB or not owned by user.
  */
 export class OrderNotFoundError extends Data.TaggedError("OrderNotFoundError")<{
   orderId: string
-}> {}
+}> {
+  get message() {
+    return `Order ${this.orderId} not found`
+  }
+}
 
 /**
  * Raised when a deposit with the same Polkadot tx hash already exists.

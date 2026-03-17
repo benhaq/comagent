@@ -90,7 +90,11 @@ export class WalletProvisioningError extends Data.TaggedError(
  */
 export class CartFullError extends Data.TaggedError("CartFullError")<{
   userId: string
-}> {}
+}> {
+  get message() {
+    return "Cart is full"
+  }
+}
 
 /**
  * Raised when the same product+size+color variant is already in cart.
@@ -99,14 +103,33 @@ export class CartDuplicateItemError extends Data.TaggedError("CartDuplicateItemE
   productId: string
   size: string
   color: string
-}> {}
+}> {
+  get message() {
+    return `Product ${this.productId} (${this.size}/${this.color}) is already in cart`
+  }
+}
+
+/**
+ * Raised when a product ASIN is not found in Redis cache (never searched or expired).
+ */
+export class CartInvalidProductError extends Data.TaggedError("CartInvalidProductError")<{
+  productId: string
+}> {
+  get message() {
+    return `Product ${this.productId} not found – search for it first`
+  }
+}
 
 /**
  * Raised when a cart item is not found or not owned by user.
  */
 export class CartItemNotFoundError extends Data.TaggedError("CartItemNotFoundError")<{
   itemId: string
-}> {}
+}> {
+  get message() {
+    return `Cart item ${this.itemId} not found`
+  }
+}
 
 /**
  * Raised when user has no Crossmint wallet provisioned.

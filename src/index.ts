@@ -19,11 +19,15 @@ import { createCheckoutRoutes } from "./routes/checkout.js";
 import { CheckoutServiceLive } from "./services/checkout-service-live.js";
 import { createOrderRoutes } from "./routes/orders.js";
 import { OrderServiceLive } from "./services/order-service-live.js";
+import { createCartRoutes } from "./routes/cart.js";
+import { CartServiceLive } from "./services/cart-service-live.js";
 
 const productServiceLayer =
   env.PRODUCT_SERVICE === "scraping"
     ? ScrapingProductServiceLive.pipe(Layer.provide(CacheServiceLive))
     : MockProductServiceLive;
+
+const cartServiceLayer = CartServiceLive.pipe(Layer.provide(CacheServiceLive));
 
 const app = new OpenAPIHono();
 
@@ -116,6 +120,7 @@ app.use("/api/chat/*", onboardingGate);
 app.use("/api/sessions/*", onboardingGate);
 app.use("/api/checkout/*", onboardingGate);
 app.use("/api/orders/*", onboardingGate);
+app.use("/api/cart/*", onboardingGate);
 
 // Gated API routes
 app.route(
@@ -125,6 +130,7 @@ app.route(
 app.route("/api/sessions", createSessionRoutes(ChatSessionServiceLive));
 app.route("/api/checkout", createCheckoutRoutes(CheckoutServiceLive));
 app.route("/api/orders", createOrderRoutes(OrderServiceLive));
+app.route("/api/cart", createCartRoutes(cartServiceLayer));
 
 // Start server
 const server = Bun.serve({

@@ -106,8 +106,11 @@ app.get("/test", async (c) => {
   return new Response(await file.text(), { headers: { "Content-Type": "text/html" } });
 });
 
-// Auth middleware for all protected routes
-app.use("/api/*", authMiddleware);
+// Auth middleware for all protected routes (skip /api/auth/session — it's public)
+app.use("/api/*", async (c, next) => {
+  if (c.req.path === "/api/auth/session" && c.req.method === "POST") return next();
+  return (authMiddleware as any)(c, next);
+});
 
 // Onboarding routes (no gate — accessible during onboarding)
 app.route("/api/onboarding", onboardingRoute);

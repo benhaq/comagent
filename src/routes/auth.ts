@@ -41,14 +41,12 @@ const logoutRoute = createRoute({
   },
 })
 
-const walletAddressSchema = z.string().regex(/^0x[a-fA-F0-9]{40}$/).nullable()
-
-// ─── Set session (public — no auth middleware, sets cookie from provided JWT) ─
 const setSessionRoute = createRoute({
   method: "post",
   path: "/session",
   tags: ["Auth"],
-  summary: "Set session cookies from JWT (for cross-origin clients)",
+  summary: "Set session cookies from JWT (public — no auth required)",
+  description: "Validates the provided JWT with Crossmint and sets httpOnly session cookies. Used by frontend clients after completing OTP login.",
   request: {
     body: {
       content: {
@@ -70,13 +68,14 @@ const setSessionRoute = createRoute({
   },
 })
 
-// ─── Public auth routes (no auth middleware) ────────────────────────────────
-export const publicAuthRoute = new OpenAPIHono({ defaultHook: validationHook })
+const walletAddressSchema = z.string().regex(/^0x[a-fA-F0-9]{40}$/).nullable()
 
-publicAuthRoute.openapi(setSessionRoute, async (c) => {
+export const authRoute = new OpenAPIHono<{ Variables: AuthVariables }>({ defaultHook: validationHook })
+
+// Public — session setup (no auth middleware; exempted in index.ts)
+authRoute.openapi(setSessionRoute, async (c) => {
   const { jwt, refreshToken } = c.req.valid("json")
 
-  // Validate the JWT with Crossmint before setting cookies
   try {
     await crossmintAuth.getSession({ jwt, refreshToken: refreshToken ?? "" })
   } catch (err) {
@@ -93,9 +92,7 @@ publicAuthRoute.openapi(setSessionRoute, async (c) => {
   return c.json({ success: true })
 })
 
-// ─── Protected auth routes ──────────────────────────────────────────────────
-export const authRoute = new OpenAPIHono<{ Variables: AuthVariables }>({ defaultHook: validationHook })
-
+// Protected — profile
 authRoute.openapi(profileRoute, async (c) => {
   const userId = c.get("userId")
 
@@ -119,6 +116,7 @@ authRoute.openapi(profileRoute, async (c) => {
   })
 })
 
+// Protected — logout
 authRoute.openapi(logoutRoute, (c) => {
   deleteCookie(c, "crossmint-jwt", { path: "/", sameSite: "Lax" })
   deleteCookie(c, "crossmint-refresh-token", { path: "/", sameSite: "Lax" })

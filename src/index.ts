@@ -8,7 +8,7 @@ import { onboardingRoute } from "./routes/onboarding.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { healthRoute } from "./routes/health.js";
 import { createChatRoute } from "./routes/chat.js";
-import { authRoute, publicAuthRoute } from "./routes/auth.js";
+import { authRoute } from "./routes/auth.js";
 import { createSessionRoutes } from "./routes/sessions.js";
 import { MockProductServiceLive } from "./services/mock-product-service.js";
 import { ScrapingProductServiceLive } from "./services/scraping-product-service.js";
@@ -106,11 +106,11 @@ app.get("/test", async (c) => {
   return new Response(await file.text(), { headers: { "Content-Type": "text/html" } });
 });
 
-// Public auth routes (before auth middleware — no JWT required)
-app.route("/api/auth", publicAuthRoute);
-
-// Auth middleware for all protected routes
-app.use("/api/*", authMiddleware);
+// Auth middleware for all protected routes (skip /api/auth/session — it's public)
+app.use("/api/*", async (c, next) => {
+  if (c.req.path === "/api/auth/session" && c.req.method === "POST") return next();
+  return (authMiddleware as any)(c, next);
+});
 
 // Onboarding routes (no gate — accessible during onboarding)
 app.route("/api/onboarding", onboardingRoute);

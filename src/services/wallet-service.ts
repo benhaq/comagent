@@ -47,7 +47,9 @@ export const provisionWallet = (
       }
 
       logger.info({ email }, "Wallet provisioned via Crossmint")
-      return { address: data.address, walletId: data.id ?? "" }
+      // Crossmint 2025-06-09 API may not return `id` — fall back to address as wallet locator
+      const walletId = data.id || data.address
+      return { address: data.address, walletId }
     },
     catch: (cause) => new WalletProvisioningError({ cause }),
   })

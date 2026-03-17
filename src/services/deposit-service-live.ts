@@ -35,8 +35,8 @@ const impl: DepositServiceShape = {
         return yield* Effect.fail(new DatabaseError({ cause: "User not found" }))
       }
 
-      // 2. Guard: wallet must exist
-      if (!user.crossmintWalletId || !user.walletAddress) {
+      // 2. Guard: wallet must exist (deposit uses email locator, only walletAddress needed)
+      if (!user.walletAddress) {
         return yield* Effect.fail(new CheckoutNoWalletError({ userId }))
       }
 

@@ -8,7 +8,7 @@ import { onboardingRoute } from "./routes/onboarding.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { healthRoute } from "./routes/health.js";
 import { createChatRoute } from "./routes/chat.js";
-import { authRoute } from "./routes/auth.js";
+import { authRoute, publicAuthRoute } from "./routes/auth.js";
 import { createSessionRoutes } from "./routes/sessions.js";
 import { MockProductServiceLive } from "./services/mock-product-service.js";
 import { ScrapingProductServiceLive } from "./services/scraping-product-service.js";
@@ -105,6 +105,9 @@ app.get("/test", async (c) => {
   const file = Bun.file("test-chat.html");
   return new Response(await file.text(), { headers: { "Content-Type": "text/html" } });
 });
+
+// Public auth routes (before auth middleware — no JWT required)
+app.route("/api/auth", publicAuthRoute);
 
 // Auth middleware for all protected routes
 app.use("/api/*", authMiddleware);

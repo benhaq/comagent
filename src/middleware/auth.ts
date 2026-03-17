@@ -42,13 +42,14 @@ export const authMiddleware = createMiddleware<{ Variables: AuthVariables }>(
 
     // Set refreshed cookies if tokens changed
     if (newJwt && newJwt !== jwt) {
-      setCookie(c, "crossmint-jwt", newJwt, { httpOnly: false, path: "/" })
+      setCookie(c, "crossmint-jwt", newJwt, { httpOnly: true, path: "/", sameSite: "Lax" })
       logger.info({ crossmintUserId, event: "auth_refresh" }, "JWT refreshed")
     }
     if (newRefreshToken && newRefreshToken !== refreshToken) {
       setCookie(c, "crossmint-refresh-token", newRefreshToken, {
-        httpOnly: false,
+        httpOnly: true,
         path: "/",
+        sameSite: "Lax",
       })
     }
 

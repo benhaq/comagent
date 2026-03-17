@@ -1,9 +1,11 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi"
-import { deleteCookie } from "hono/cookie"
+import { deleteCookie, setCookie } from "hono/cookie"
 import { eq } from "drizzle-orm"
 import { db } from "../db/client.js"
 import { users } from "../db/schema/users.js"
 import type { AuthVariables } from "../middleware/auth.js"
+import { crossmintAuth } from "../lib/crossmint.js"
+import logger from "../lib/logger.js"
 import { UserProfileSchema, ErrorSchema, errorResponse, commonErrors, validationHook } from "../lib/openapi-schemas.js"
 
 const security = [{ CookieAuth: [] }]
@@ -41,6 +43,57 @@ const logoutRoute = createRoute({
 
 const walletAddressSchema = z.string().regex(/^0x[a-fA-F0-9]{40}$/).nullable()
 
+// ─── Set session (public — no auth middleware, sets cookie from provided JWT) ─
+const setSessionRoute = createRoute({
+  method: "post",
+  path: "/session",
+  tags: ["Auth"],
+  summary: "Set session cookies from JWT (for cross-origin clients)",
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: z.object({
+            jwt: z.string().min(1),
+            refreshToken: z.string().optional(),
+          }),
+        },
+      },
+    },
+  },
+  responses: {
+    200: {
+      content: { "application/json": { schema: z.object({ success: z.boolean() }) } },
+      description: "Cookies set successfully",
+    },
+    ...errorResponse(401, "Invalid JWT"),
+  },
+})
+
+// ─── Public auth routes (no auth middleware) ────────────────────────────────
+export const publicAuthRoute = new OpenAPIHono({ defaultHook: validationHook })
+
+publicAuthRoute.openapi(setSessionRoute, async (c) => {
+  const { jwt, refreshToken } = c.req.valid("json")
+
+  // Validate the JWT with Crossmint before setting cookies
+  try {
+    await crossmintAuth.getSession({ jwt, refreshToken: refreshToken ?? "" })
+  } catch (err) {
+    logger.warn({ err, event: "set_session_invalid_jwt" }, "Invalid JWT in set-session")
+    return c.json({ error: "Invalid JWT", code: "UNAUTHORIZED" }, 401) as never
+  }
+
+  const cookieOpts = { httpOnly: true, path: "/", sameSite: "Lax" as const }
+  setCookie(c, "crossmint-jwt", jwt, cookieOpts)
+  if (refreshToken) {
+    setCookie(c, "crossmint-refresh-token", refreshToken, cookieOpts)
+  }
+
+  return c.json({ success: true })
+})
+
+// ─── Protected auth routes ──────────────────────────────────────────────────
 export const authRoute = new OpenAPIHono<{ Variables: AuthVariables }>({ defaultHook: validationHook })
 
 authRoute.openapi(profileRoute, async (c) => {
@@ -67,7 +120,7 @@ authRoute.openapi(profileRoute, async (c) => {
 })
 
 authRoute.openapi(logoutRoute, (c) => {
-  deleteCookie(c, "crossmint-jwt", { path: "/" })
-  deleteCookie(c, "crossmint-refresh-token", { path: "/" })
+  deleteCookie(c, "crossmint-jwt", { path: "/", sameSite: "Lax" })
+  deleteCookie(c, "crossmint-refresh-token", { path: "/", sameSite: "Lax" })
   return c.json({ success: true })
 })

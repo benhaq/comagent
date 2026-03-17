@@ -120,6 +120,105 @@ export const OnboardingStatusSchema = z
   })
   .openapi("OnboardingStatus")
 
+// ─── Cart schemas ───────────────────────────────────────────────────────────
+
+export const CartItemSchema = z
+  .object({
+    id: z.string().uuid().openapi({ example: "c1d2e3f4-a5b6-7890-cdef-123456789012" }),
+    userId: z.string().uuid().openapi({ example: "f0e1d2c3-b4a5-6789-0abc-def123456789" }),
+    productId: z.string().openapi({ example: "B0CXYZ1234" }),
+    productName: z.string().openapi({ example: "Nike Air Max 90" }),
+    price: z.number().int().openapi({ example: 14999 }),
+    image: z.string().url().openapi({ example: "https://example.com/shoe.jpg" }),
+    size: z.string().openapi({ example: "10" }),
+    color: z.string().openapi({ example: "Black" }),
+    productUrl: z.string().url().openapi({ example: "https://amazon.com/dp/B0CXYZ1234" }),
+    retailer: z.string().openapi({ example: "Amazon" }),
+    createdAt: z.string().openapi({ example: "2026-03-17T12:00:00.000Z" }),
+  })
+  .openapi("CartItem")
+
+export const CartListSchema = z
+  .object({
+    items: z.array(CartItemSchema),
+  })
+  .openapi("CartList")
+
+export const AddCartItemSchema = z
+  .object({
+    productId: z.string().min(1).max(255),
+    productName: z.string().min(1).max(500),
+    price: z.number().int().positive(),
+    image: z.string().url(),
+    size: z.string().min(1).max(50),
+    color: z.string().min(1).max(50),
+    productUrl: z.string().url(),
+    retailer: z.string().min(1).max(255),
+  })
+  .openapi("AddCartItem")
+
+export const CartItemIdParamSchema = z.object({
+  itemId: z.string().uuid().openapi({
+    param: { name: "itemId", in: "path" },
+    example: "c1d2e3f4-a5b6-7890-cdef-123456789012",
+  }),
+})
+
+// ─── Checkout schemas ──────────────────────────────────────────────────────
+
+export const CheckoutRequestSchema = z
+  .object({
+    cartItemId: z.string().uuid(),
+  })
+  .openapi("CheckoutRequest")
+
+export const CheckoutResponseSchema = z
+  .object({
+    orderId: z.string().uuid().openapi({ example: "d1e2f3a4-b5c6-7890-defg-234567890123" }),
+    crossmintOrderId: z.string().openapi({ example: "ed34a579-7fbc-4509-b8d8-9e61954cd555" }),
+    phase: z.string().openapi({ example: "payment" }),
+  })
+  .openapi("CheckoutResponse")
+
+// ─── Order schemas ─────────────────────────────────────────────────────────
+
+export const OrderSummarySchema = z
+  .object({
+    orderId: z.string().uuid().openapi({ example: "d1e2f3a4-b5c6-7890-defg-234567890123" }),
+    crossmintOrderId: z.string().openapi({ example: "ed34a579-7fbc-4509-b8d8-9e61954cd555" }),
+    phase: z.string().openapi({ example: "completed" }),
+    lineItems: z.array(z.unknown()),
+    payment: z.object({
+      status: z.string().openapi({ example: "completed" }),
+      currency: z.string().openapi({ example: "usdc" }),
+    }),
+    quote: z
+      .object({
+        totalPrice: z
+          .object({
+            amount: z.string().openapi({ example: "29.99" }),
+            currency: z.string().openapi({ example: "usd" }),
+          })
+          .optional(),
+      })
+      .optional(),
+    createdAt: z.string().openapi({ example: "2026-03-17T12:00:00.000Z" }),
+  })
+  .openapi("OrderSummary")
+
+export const OrderListSchema = z
+  .object({
+    orders: z.array(OrderSummarySchema),
+  })
+  .openapi("OrderList")
+
+export const OrderIdParamSchema = z.object({
+  orderId: z.string().uuid().openapi({
+    param: { name: "orderId", in: "path" },
+    example: "d1e2f3a4-b5c6-7890-defg-234567890123",
+  }),
+})
+
 // ─── Shared validation hook ──────────────────────────────────────────────────
 
 /**

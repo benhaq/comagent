@@ -172,3 +172,25 @@ export class CheckoutPaymentError extends Data.TaggedError("CheckoutPaymentError
 export class OrderNotFoundError extends Data.TaggedError("OrderNotFoundError")<{
   orderId: string
 }> {}
+
+/**
+ * Raised when a deposit with the same Polkadot tx hash already exists.
+ */
+export class DepositDuplicateError extends Data.TaggedError("DepositDuplicateError")<{
+  transactionHash: string
+}> {
+  get message() {
+    return `Deposit already processed for tx ${this.transactionHash}`
+  }
+}
+
+/**
+ * Raised when Crossmint wallet funding fails.
+ */
+export class DepositFundingError extends Data.TaggedError("DepositFundingError")<{
+  cause?: unknown
+}> {
+  get message() {
+    return "Failed to fund wallet"
+  }
+}

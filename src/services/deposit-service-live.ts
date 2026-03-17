@@ -19,22 +19,7 @@ const dbError = (cause: unknown) => new DatabaseError({ cause })
 const impl: DepositServiceShape = {
   confirmDeposit: (userId, amountPAS, transactionHash) =>
     Effect.gen(function* () {
-      // 1. Check for duplicate tx hash
-      const existing = yield* Effect.tryPromise({
-        try: () =>
-          db
-            .select()
-            .from(orders)
-            .where(eq(orders.polkadotTxHash, transactionHash))
-            .then((rows) => rows[0] ?? null),
-        catch: dbError,
-      })
-
-      if (existing) {
-        return yield* Effect.fail(new DepositDuplicateError({ transactionHash }))
-      }
-
-      // 2. Fetch user
+      // 1. Fetch user
       const user = yield* Effect.tryPromise({
         try: () =>
           db
@@ -49,20 +34,20 @@ const impl: DepositServiceShape = {
         return yield* Effect.fail(new DatabaseError({ cause: "User not found" }))
       }
 
-      // 3. Guard: wallet must exist
+      // 2. Guard: wallet must exist
       if (!user.crossmintWalletId || !user.walletAddress) {
         return yield* Effect.fail(new CheckoutNoWalletError({ userId }))
       }
 
-      // 4. Convert PAS → USDC
+      // 3. Convert PAS → USDC
       const amountUSDC = amountPAS * env.PAS_TO_USDC_RATE
       const amountUSDCStr = amountUSDC.toFixed(2)
 
-      // 5. Fund wallet via Crossmint staging faucet
+      // 4. Fund wallet via Crossmint staging faucet
       const walletLocator = `email:${user.email}:evm`
       yield* fundCrossmintWallet(walletLocator, amountUSDC)
 
-      // 6. Insert deposit order record
+      // 5. Insert deposit order record (unique constraint on polkadot_tx_hash guards duplicates)
       const depositOrder = yield* Effect.tryPromise({
         try: () =>
           db

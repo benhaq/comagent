@@ -4,10 +4,11 @@ import type {
   OrderNotFoundError,
   CheckoutOrderCreationError,
 } from "../lib/errors.js"
+import type { OrderType } from "../db/schema/orders.js"
 
 export interface OrderSummary {
   orderId: string
-  type: string
+  type: OrderType
   crossmintOrderId: string | null
   phase: string
   lineItems: unknown[]

@@ -9,8 +9,24 @@ import {
 import { getCrossmintOrder } from "../lib/crossmint-client.js"
 import { OrderService } from "./order-service.js"
 import type { OrderServiceShape, OrderSummary } from "./order-service.js"
+import type { Order } from "../db/schema/orders.js"
 
 const dbError = (cause: unknown) => new DatabaseError({ cause })
+
+function mapDepositOrder(local: Order): OrderSummary {
+  return {
+    orderId: local.id,
+    type: "deposit",
+    crossmintOrderId: null,
+    phase: "completed",
+    lineItems: [],
+    payment: { status: "funded", currency: "usdc" },
+    amountPas: local.amountPas,
+    amountUsdc: local.amountUsdc,
+    polkadotTxHash: local.polkadotTxHash,
+    createdAt: local.createdAt.toISOString(),
+  }
+}
 
 function mapCrossmintOrder(
   localOrderId: string,
@@ -57,18 +73,7 @@ const impl: OrderServiceShape = {
 
       for (const local of localOrders) {
         if (local.type === "deposit") {
-          results.push({
-            orderId: local.id,
-            type: "deposit",
-            crossmintOrderId: null,
-            phase: "completed",
-            lineItems: [],
-            payment: { status: "funded", currency: "usdc" },
-            amountPas: local.amountPas,
-            amountUsdc: local.amountUsdc,
-            polkadotTxHash: local.polkadotTxHash,
-            createdAt: local.createdAt.toISOString(),
-          })
+          results.push(mapDepositOrder(local))
           continue
         }
 
@@ -119,18 +124,7 @@ const impl: OrderServiceShape = {
       }
 
       if (local.type === "deposit") {
-        return {
-          orderId: local.id,
-          type: "deposit",
-          crossmintOrderId: null,
-          phase: "completed",
-          lineItems: [],
-          payment: { status: "funded", currency: "usdc" },
-          amountPas: local.amountPas,
-          amountUsdc: local.amountUsdc,
-          polkadotTxHash: local.polkadotTxHash,
-          createdAt: local.createdAt.toISOString(),
-        }
+        return mapDepositOrder(local)
       }
 
       const crossmintOrder = yield* getCrossmintOrder(local.crossmintOrderId!)

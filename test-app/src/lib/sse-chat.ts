@@ -33,18 +33,9 @@ export async function sendChat(opts: SendChatOptions): Promise<void> {
   const body: Record<string, unknown> = { messages: opts.messages }
   if (opts.sessionId) body.sessionId = opts.sessionId
 
-  // Set cookie so the server reads crossmint-jwt from cookie header
-  if (opts.jwt && !document.cookie.includes("crossmint-jwt=")) {
-    document.cookie = `crossmint-jwt=${opts.jwt}; path=/`
-  }
-  if (opts.refreshToken && !document.cookie.includes("crossmint-refresh-token=")) {
-    document.cookie = `crossmint-refresh-token=${opts.refreshToken}; path=/`
-  }
-
   const res = await fetch(opts.url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    credentials: "include",
     body: JSON.stringify(body),
   })
 

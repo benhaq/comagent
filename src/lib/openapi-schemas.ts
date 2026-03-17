@@ -185,7 +185,8 @@ export const CheckoutResponseSchema = z
 export const OrderSummarySchema = z
   .object({
     orderId: z.string().uuid().openapi({ example: "d1e2f3a4-b5c6-7890-defg-234567890123" }),
-    crossmintOrderId: z.string().openapi({ example: "ed34a579-7fbc-4509-b8d8-9e61954cd555" }),
+    type: z.string().openapi({ example: "checkout" }),
+    crossmintOrderId: z.string().nullable().openapi({ example: "ed34a579-7fbc-4509-b8d8-9e61954cd555" }),
     phase: z.string().openapi({ example: "completed" }),
     lineItems: z.array(z.unknown()),
     payment: z.object({
@@ -216,6 +217,31 @@ export const OrderIdParamSchema = z.object({
   orderId: z.string().uuid().openapi({
     param: { name: "orderId", in: "path" },
     example: "d1e2f3a4-b5c6-7890-defg-234567890123",
+  }),
+})
+
+// ─── Deposit schemas ───────────────────────────────────────────────────────
+
+export const DepositConfirmRequestSchema = z
+  .object({
+    amountPAS: z.number().positive().openapi({ example: 100 }),
+    transactionHash: z.string().min(1).openapi({ example: "0xabc123def456..." }),
+  })
+  .openapi("DepositConfirmRequest")
+
+export const DepositConfirmResponseSchema = z
+  .object({
+    orderId: z.string().uuid().openapi({ example: "d1e2f3a4-b5c6-7890-defg-234567890123" }),
+    amountPAS: z.string().openapi({ example: "100" }),
+    amountUSDC: z.string().openapi({ example: "10.00" }),
+    crossmintFundingStatus: z.string().openapi({ example: "funded" }),
+  })
+  .openapi("DepositConfirmResponse")
+
+export const UserIdParamSchema = z.object({
+  userId: z.string().uuid().openapi({
+    param: { name: "userId", in: "path" },
+    example: "f0e1d2c3-b4a5-6789-0abc-def123456789",
   }),
 })
 

@@ -1,0 +1,103 @@
+import { Effect, Layer } from "effect"
+import { eq } from "drizzle-orm"
+import { db } from "../db/client.js"
+import { users } from "../db/schema/users.js"
+import { orders } from "../db/schema/orders.js"
+import {
+  DatabaseError,
+  DepositDuplicateError,
+  CheckoutNoWalletError,
+} from "../lib/errors.js"
+import { fundCrossmintWallet } from "../lib/crossmint-client.js"
+import { env } from "../lib/env.js"
+import { DepositService } from "./deposit-service.js"
+import type { DepositServiceShape } from "./deposit-service.js"
+import logger from "../lib/logger.js"
+
+const dbError = (cause: unknown) => new DatabaseError({ cause })
+
+const impl: DepositServiceShape = {
+  confirmDeposit: (userId, amountPAS, transactionHash) =>
+    Effect.gen(function* () {
+      // 1. Check for duplicate tx hash
+      const existing = yield* Effect.tryPromise({
+        try: () =>
+          db
+            .select()
+            .from(orders)
+            .where(eq(orders.polkadotTxHash, transactionHash))
+            .then((rows) => rows[0] ?? null),
+        catch: dbError,
+      })
+
+      if (existing) {
+        return yield* Effect.fail(new DepositDuplicateError({ transactionHash }))
+      }
+
+      // 2. Fetch user
+      const user = yield* Effect.tryPromise({
+        try: () =>
+          db
+            .select()
+            .from(users)
+            .where(eq(users.id, userId))
+            .then((rows) => rows[0] ?? null),
+        catch: dbError,
+      })
+
+      if (!user) {
+        return yield* Effect.fail(new DatabaseError({ cause: "User not found" }))
+      }
+
+      // 3. Guard: wallet must exist
+      if (!user.crossmintWalletId || !user.walletAddress) {
+        return yield* Effect.fail(new CheckoutNoWalletError({ userId }))
+      }
+
+      // 4. Convert PAS → USDC
+      const amountUSDC = amountPAS * env.PAS_TO_USDC_RATE
+      const amountUSDCStr = amountUSDC.toFixed(2)
+
+      // 5. Fund wallet via Crossmint staging faucet
+      const walletLocator = `email:${user.email}:evm`
+      yield* fundCrossmintWallet(walletLocator, amountUSDC)
+
+      // 6. Insert deposit order record
+      const depositOrder = yield* Effect.tryPromise({
+        try: () =>
+          db
+            .insert(orders)
+            .values({
+              userId,
+              type: "deposit",
+              amountPas: String(amountPAS),
+              amountUsdc: amountUSDCStr,
+              polkadotTxHash: transactionHash,
+            })
+            .returning()
+            .then((rows) => rows[0]),
+        catch: (cause) => {
+          // Handle unique constraint violation on polkadot_tx_hash
+          const msg = String(cause)
+          if (msg.includes("idx_orders_polkadot_tx_hash") || msg.includes("unique")) {
+            return new DepositDuplicateError({ transactionHash })
+          }
+          return new DatabaseError({ cause })
+        },
+      })
+
+      logger.info(
+        { userId, orderId: depositOrder.id, amountPAS, amountUSDC: amountUSDCStr, transactionHash },
+        "Deposit funded and recorded"
+      )
+
+      return {
+        orderId: depositOrder.id,
+        amountPAS: String(amountPAS),
+        amountUSDC: amountUSDCStr,
+        crossmintFundingStatus: "funded" as const,
+      }
+    }),
+}
+
+export const DepositServiceLive = Layer.succeed(DepositService, impl)

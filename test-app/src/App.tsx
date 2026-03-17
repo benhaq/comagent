@@ -1,10 +1,13 @@
 // test-app/src/App.tsx
-import { useState, useRef, useCallback } from "react"
+import { useState, useRef, useCallback, useEffect } from "react"
 import { Renderer, JSONUIProvider } from "@json-render/react"
 import { buildProductGridSpec, buildProductDetailSpec } from "@backend/lib/product-spec-builders"
 import type { ProductSearchResult, ProductDetail } from "@backend/types/product"
+import type { ProductCardProps } from "@backend/lib/product-catalog"
 import { sendChat, type ChatMessage, type SSEEvent } from "./lib/sse-chat"
-import { registry } from "./registry"
+import { fetchCart, addToCart, removeFromCart, type CartItemResponse } from "./lib/cart-api"
+import { registry, CartContext } from "./registry"
+import { CartPanel } from "./components/CartPanel"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -28,6 +31,11 @@ export function App() {
   const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [sending, setSending] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
+
+  // Cart state
+  const [cartItems, setCartItems] = useState<CartItemResponse[]>([])
+  const [cartLoading, setCartLoading] = useState(false)
+  const [cartOpen, setCartOpen] = useState(false)
 
   const conversationRef = useRef<ChatMessage[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -53,6 +61,46 @@ export function App() {
     })
     setTimeout(scrollToBottom, 50)
   }, [scrollToBottom])
+
+  // Fetch cart when JWT is set
+  useEffect(() => {
+    if (!jwt) { setCartItems([]); return }
+    setCartLoading(true)
+    fetchCart(apiUrl, jwt)
+      .then(setCartItems)
+      .catch(() => {}) // silently fail on initial load
+      .finally(() => setCartLoading(false))
+  }, [jwt, apiUrl])
+
+  const handleAddToCart = useCallback(async (product: ProductCardProps) => {
+    if (!jwt) return
+    try {
+      const item = await addToCart(apiUrl, jwt, {
+        productId: product.id,
+        productName: product.name,
+        price: product.price,
+        image: product.image,
+        size: product.sizes[0] ?? "One Size",
+        color: product.colors[0]?.name ?? "Default",
+        productUrl: product.product_url,
+        retailer: product.retailer,
+      })
+      setCartItems((prev) => [item, ...prev])
+    } catch (err: any) {
+      // Re-throw so ProductCard can show the error
+      throw err
+    }
+  }, [jwt, apiUrl])
+
+  const handleRemoveFromCart = useCallback(async (itemId: string) => {
+    if (!jwt) return
+    try {
+      await removeFromCart(apiUrl, jwt, itemId)
+      setCartItems((prev) => prev.filter((i) => i.id !== itemId))
+    } catch {
+      // ignore
+    }
+  }, [jwt, apiUrl])
 
   const handleSend = useCallback(async () => {
     const text = input.trim()
@@ -155,72 +203,99 @@ export function App() {
           placeholder="refresh token (optional)"
           style={{ width: 260, background: "#0f3460", border: "1px solid #444", color: "#eee", padding: "6px 10px", borderRadius: 4, fontSize: 13 }}
         />
-      </div>
-
-      {/* Messages */}
-      <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-        {messages.map((msg) => {
-          // Render json-render spec via <Renderer>
-          if (msg.spec) {
-            return (
-              <div key={msg.id} style={{ alignSelf: "flex-start", maxWidth: "90%" }}>
-                <JSONUIProvider registry={registry}>
-                  <Renderer spec={msg.spec as any} registry={registry} />
-                </JSONUIProvider>
-              </div>
-            )
-          }
-
-          const styles: Record<string, React.CSSProperties> = {
-            user: { background: "#0f3460", alignSelf: "flex-end" },
-            assistant: { background: "#222", alignSelf: "flex-start", border: "1px solid #333" },
-            tool: { background: "#1a2a1a", alignSelf: "flex-start", border: "1px solid #2a4a2a", fontFamily: "monospace", fontSize: 12 },
-            error: { background: "#3a1a1a", border: "1px solid #4a2a2a", alignSelf: "center", color: "#f88" },
-            system: { background: "transparent", alignSelf: "center", color: "#888", fontSize: 12 },
-          }
-
-          return (
-            <div
-              key={msg.id}
-              style={{
-                maxWidth: "80%", padding: "10px 14px", borderRadius: 12,
-                fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word",
-                ...styles[msg.role],
-              }}
-            >
-              {msg.content}
-            </div>
-          )
-        })}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Input bar */}
-      <div style={{
-        padding: "12px 16px", background: "#16213e",
-        borderTop: "1px solid #333", display: "flex", gap: 8,
-      }}>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter" && !sending) handleSend() }}
-          placeholder="Type a message..."
-          autoFocus
-          style={{
-            flex: 1, background: "#0f3460", border: "1px solid #444",
-            color: "#eee", padding: "10px 14px", borderRadius: 8, fontSize: 14, outline: "none",
-          }}
-        />
         <button
-          onClick={handleSend}
-          disabled={sending}
+          onClick={() => setCartOpen(!cartOpen)}
           style={{
-            background: sending ? "#555" : "#e94560", color: "#fff",
-            border: "none", padding: "10px 20px", borderRadius: 8, cursor: sending ? "not-allowed" : "pointer", fontSize: 14,
+            background: "#0f3460", border: "1px solid #444", color: "#eee",
+            padding: "6px 14px", borderRadius: 4, fontSize: 13, cursor: "pointer",
           }}
         >
-          Send
+          Cart ({cartItems.length})
         </button>
+      </div>
+
+      {/* Main area: chat + optional cart panel */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        {/* Chat area */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          {/* Messages */}
+          <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+            <CartContext.Provider value={{ onAddToCart: handleAddToCart }}>
+              {messages.map((msg) => {
+                // Render json-render spec via <Renderer>
+                if (msg.spec) {
+                  return (
+                    <div key={msg.id} style={{ alignSelf: "flex-start", maxWidth: "90%" }}>
+                      <JSONUIProvider registry={registry}>
+                        <Renderer spec={msg.spec as any} registry={registry} />
+                      </JSONUIProvider>
+                    </div>
+                  )
+                }
+
+                const styles: Record<string, React.CSSProperties> = {
+                  user: { background: "#0f3460", alignSelf: "flex-end" },
+                  assistant: { background: "#222", alignSelf: "flex-start", border: "1px solid #333" },
+                  tool: { background: "#1a2a1a", alignSelf: "flex-start", border: "1px solid #2a4a2a", fontFamily: "monospace", fontSize: 12 },
+                  error: { background: "#3a1a1a", border: "1px solid #4a2a2a", alignSelf: "center", color: "#f88" },
+                  system: { background: "transparent", alignSelf: "center", color: "#888", fontSize: 12 },
+                }
+
+                return (
+                  <div
+                    key={msg.id}
+                    style={{
+                      maxWidth: "80%", padding: "10px 14px", borderRadius: 12,
+                      fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word",
+                      ...styles[msg.role],
+                    }}
+                  >
+                    {msg.content}
+                  </div>
+                )
+              })}
+            </CartContext.Provider>
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input bar */}
+          <div style={{
+            padding: "12px 16px", background: "#16213e",
+            borderTop: "1px solid #333", display: "flex", gap: 8,
+          }}>
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !sending) handleSend() }}
+              placeholder="Type a message..."
+              autoFocus
+              style={{
+                flex: 1, background: "#0f3460", border: "1px solid #444",
+                color: "#eee", padding: "10px 14px", borderRadius: 8, fontSize: 14, outline: "none",
+              }}
+            />
+            <button
+              onClick={handleSend}
+              disabled={sending}
+              style={{
+                background: sending ? "#555" : "#e94560", color: "#fff",
+                border: "none", padding: "10px 20px", borderRadius: 8, cursor: sending ? "not-allowed" : "pointer", fontSize: 14,
+              }}
+            >
+              Send
+            </button>
+          </div>
+        </div>
+
+        {/* Cart panel */}
+        {cartOpen && (
+          <CartPanel
+            items={cartItems}
+            loading={cartLoading}
+            onRemove={handleRemoveFromCart}
+            onClose={() => setCartOpen(false)}
+          />
+        )}
       </div>
     </div>
   )

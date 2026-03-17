@@ -19,7 +19,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 const FETCH_TIMEOUT_MS = 60_000;
-const CACHE_TTL_SECONDS = 15 * 60;
+const CACHE_TTL_SECONDS = 60 * 60; // 1 hour — long enough for cart validation after search
 const RETRY_SCHEDULE = Schedule.exponential("2 seconds").pipe(
   Schedule.compose(Schedule.recurs(2)),
 );

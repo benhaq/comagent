@@ -1,7 +1,28 @@
+import { useState } from "react"
 import type { ProductCardProps } from "@backend/lib/product-catalog"
 
-export function ProductCard({ props }: { props: ProductCardProps }) {
+interface Props {
+  props: ProductCardProps
+  onAddToCart?: (product: ProductCardProps) => void
+}
+
+export function ProductCard({ props, onAddToCart }: Props) {
+  const [added, setAdded] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const price = (props.price / 100).toFixed(2)
+
+  const handleAdd = () => {
+    if (!onAddToCart) return
+    setError(null)
+    try {
+      onAddToCart(props)
+      setAdded(true)
+      setTimeout(() => setAdded(false), 1500)
+    } catch (err: any) {
+      setError(err.message)
+    }
+  }
+
   return (
     <div style={{
       border: "1px solid #333",
@@ -60,6 +81,26 @@ export function ProductCard({ props }: { props: ProductCardProps }) {
       >
         View product →
       </a>
+      {onAddToCart && (
+        <button
+          onClick={handleAdd}
+          disabled={added}
+          style={{
+            marginTop: 4,
+            padding: "6px 12px",
+            borderRadius: 6,
+            border: "none",
+            background: added ? "#22c55e" : "#e94560",
+            color: "#fff",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: added ? "default" : "pointer",
+          }}
+        >
+          {added ? "Added!" : "Add to Cart"}
+        </button>
+      )}
+      {error && <div style={{ fontSize: 11, color: "#f87171" }}>{error}</div>}
     </div>
   )
 }

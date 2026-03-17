@@ -33,12 +33,17 @@ export interface ProductDetail extends ProductCard {
 export interface ProductSearchParams {
   query: string
   category?: string
+  brand?: string
   /** Minimum price in USD dollars */
   minPrice?: number
   /** Maximum price in USD dollars */
   maxPrice?: number
+  /** Minimum rating (0-5) */
+  minRating?: number
   size?: string
   color?: string
+  /** Page number (1-based), defaults to 1 */
+  page?: number
   /** Defaults to 5 */
   limit?: number
 }

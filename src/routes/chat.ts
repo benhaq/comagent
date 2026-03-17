@@ -21,6 +21,14 @@ import {
 
 let msgCounter = 0
 function toUIMessage(role: string, content: unknown): UIMessage {
+  // If content is an array of UIMessage parts (e.g. tool-invocation), use directly
+  if (Array.isArray(content) && content.length > 0 && content[0]?.type) {
+    return {
+      id: `msg-${++msgCounter}`,
+      role: role as UIMessage["role"],
+      parts: content,
+    }
+  }
   return {
     id: `msg-${++msgCounter}`,
     role: role as UIMessage["role"],
@@ -181,18 +189,52 @@ export function createChatRoute(
       messages: modelMessages,
       tools,
       stopWhen: stepCountIs(3),
-      onStepFinish: ({ toolCalls, toolResults }) => {
-        if (toolCalls.length > 0) {
+      onStepFinish: async ({ toolCalls, toolResults }) => {
+        for (const tc of toolCalls as any[]) {
           logger.info(
-            { toolCalls: toolCalls.map((tc: any) => ({ name: tc.toolName, args: tc.args })) },
-            "Tool calls executed"
+            { sessionId, tool: tc.toolName, toolCallId: tc.toolCallId, args: tc.args },
+            `Tool call: ${tc.toolName}`,
           )
         }
-        if (toolResults.length > 0) {
+        for (const tr of toolResults as any[]) {
+          const result = tr.result
+          const productCount = result?.products?.length ?? result?.id ? 1 : 0
           logger.info(
-            { toolResults: toolResults.map((tr: any) => ({ name: tr.toolName, resultPreview: JSON.stringify(tr.result).slice(0, 200) })) },
-            "Tool results received"
+            {
+              sessionId,
+              tool: tr.toolName,
+              toolCallId: tr.toolCallId,
+              productCount,
+              totalResults: result?.totalResults,
+              resultPreview: JSON.stringify(result).slice(0, 500),
+            },
+            `Tool result: ${tr.toolName} → ${productCount} product(s)`,
           )
+        }
+
+        // Persist tool call + result as an assistant message with tool-invocation parts
+        // so the LLM retains full tool context on follow-up messages
+        if (toolCalls.length > 0) {
+          try {
+            const parts = toolCalls.map((tc: any, i: number) => ({
+              type: "tool-invocation",
+              toolInvocation: {
+                toolCallId: tc.toolCallId,
+                toolName: tc.toolName,
+                args: tc.args,
+                state: "result",
+                result: (toolResults[i] as any)?.result ?? null,
+              },
+            }))
+            await Effect.runPromise(
+              ChatSessionService.pipe(
+                Effect.flatMap((s) => s.addMessage(sessionId, "assistant", parts)),
+                Effect.provide(sessionServiceLayer),
+              ),
+            )
+          } catch (err) {
+            logger.warn({ err, sessionId }, "Failed to persist tool step messages")
+          }
         }
       },
       onFinish: async ({ text }) => {

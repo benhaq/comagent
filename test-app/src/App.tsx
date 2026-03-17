@@ -1,6 +1,6 @@
 // test-app/src/App.tsx
 import { useState, useRef, useCallback } from "react"
-import { Renderer } from "@json-render/react"
+import { Renderer, JSONUIProvider } from "@json-render/react"
 import { buildProductGridSpec, buildProductDetailSpec } from "@backend/lib/product-spec-builders"
 import type { ProductSearchResult, ProductDetail } from "@backend/types/product"
 import { sendChat, type ChatMessage, type SSEEvent } from "./lib/sse-chat"
@@ -12,7 +12,7 @@ interface DisplayMessage {
   id: number
   role: "user" | "assistant" | "tool" | "error" | "system"
   content: string
-  spec?: { root: Record<string, unknown> }
+  spec?: { root: string; elements: Record<string, unknown> }
 }
 
 let msgId = 0
@@ -89,7 +89,7 @@ export function App() {
             const preview = JSON.stringify(evt.result, null, 2)
             addMessage({
               role: "tool",
-              content: `Result (${evt.toolName}):\n${preview.slice(0, 2000)}`,
+              content: `Result (${evt.toolName}):\n${preview}`,
             })
           }
           break
@@ -164,7 +164,9 @@ export function App() {
           if (msg.spec) {
             return (
               <div key={msg.id} style={{ alignSelf: "flex-start", maxWidth: "90%" }}>
-                <Renderer spec={msg.spec as any} registry={registry} />
+                <JSONUIProvider registry={registry}>
+                  <Renderer spec={msg.spec as any} registry={registry} />
+                </JSONUIProvider>
               </div>
             )
           }

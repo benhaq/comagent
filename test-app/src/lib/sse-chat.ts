@@ -57,6 +57,8 @@ export async function sendChat(opts: SendChatOptions): Promise<void> {
   const reader = res.body!.getReader()
   const decoder = new TextDecoder()
   let buffer = ""
+  // Track toolCallId → toolName since tool-output-available lacks toolName
+  const toolNameMap = new Map<string, string>()
 
   while (true) {
     const { done, value } = await reader.read()
@@ -82,27 +84,35 @@ export async function sendChat(opts: SendChatOptions): Promise<void> {
             opts.onEvent({ type: "text-delta", delta: evt.delta ?? "" })
             break
 
-          // ── Tool call (v1 protocol: start/delta/end) ───────
-          // tool-call-end has the complete toolName + args
+          // ── Tool call ─────────────────────────────────────
           case "tool-call":
           case "tool-call-end":
+          case "tool-input-available": {
+            const callId = evt.toolCallId ?? evt.id ?? ""
+            const toolName = evt.toolName ?? ""
+            if (callId && toolName) toolNameMap.set(callId, toolName)
             opts.onEvent({
               type: "tool-call",
-              toolCallId: evt.toolCallId ?? evt.id ?? "",
-              toolName: evt.toolName ?? "",
-              args: evt.args,
+              toolCallId: callId,
+              toolName,
+              args: evt.args ?? evt.input,
             })
             break
+          }
 
           // ── Tool result ────────────────────────────────────
           case "tool-result":
+          case "tool-output-available": {
+            const resultCallId = evt.toolCallId ?? evt.id ?? ""
+            const resultToolName = evt.toolName ?? toolNameMap.get(resultCallId) ?? ""
             opts.onEvent({
               type: "tool-result",
-              toolCallId: evt.toolCallId ?? evt.id ?? "",
-              toolName: evt.toolName ?? "",
+              toolCallId: resultCallId,
+              toolName: resultToolName,
               result: evt.result ?? evt.output,
             })
             break
+          }
 
           // ── Lifecycle ──────────────────────────────────────
           case "error":

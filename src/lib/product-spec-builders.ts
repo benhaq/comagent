@@ -1,17 +1,22 @@
 import type { ProductSearchResult, ProductDetail } from "../types/product.js"
 
 // ---------------------------------------------------------------------------
-// Spec types — minimal json-render element tree structure
+// Spec types — @json-render/react flat element map format
+//
+// The React renderer expects:
+//   { root: "elementId", elements: { "elementId": { type, props, children? } } }
+// where `children` is an array of element IDs (strings), not nested objects.
 // ---------------------------------------------------------------------------
 
 interface SpecElement {
   type: string
   props: Record<string, unknown>
-  children?: SpecElement[]
+  children?: string[]
 }
 
 export interface Spec {
-  root: SpecElement
+  root: string
+  elements: Record<string, SpecElement>
 }
 
 // ---------------------------------------------------------------------------
@@ -24,19 +29,28 @@ export interface Spec {
  * with toolName === "searchProducts".
  */
 export function buildProductGridSpec(result: ProductSearchResult): Spec {
-  return {
-    root: {
-      type: "ProductGrid",
-      props: {
-        query: result.query,
-        totalResults: result.totalResults,
-      },
-      children: result.products.map((product) => ({
-        type: "ProductCard",
-        props: product as unknown as Record<string, unknown>,
-      })),
+  const elements: Record<string, SpecElement> = {}
+  const childIds: string[] = []
+
+  result.products.forEach((product, i) => {
+    const id = `card-${product.id || i}`
+    childIds.push(id)
+    elements[id] = {
+      type: "ProductCard",
+      props: product as unknown as Record<string, unknown>,
+    }
+  })
+
+  elements["grid"] = {
+    type: "ProductGrid",
+    props: {
+      query: result.query,
+      totalResults: result.totalResults,
     },
+    children: childIds,
   }
+
+  return { root: "grid", elements }
 }
 
 /**
@@ -46,9 +60,12 @@ export function buildProductGridSpec(result: ProductSearchResult): Spec {
  */
 export function buildProductDetailSpec(detail: ProductDetail): Spec {
   return {
-    root: {
-      type: "ProductDetailCard",
-      props: detail as unknown as Record<string, unknown>,
+    root: "detail",
+    elements: {
+      detail: {
+        type: "ProductDetailCard",
+        props: detail as unknown as Record<string, unknown>,
+      },
     },
   }
 }

@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "paths": {
+      "@backend/*": ["../src/*"]
+    }
+  },
+  "include": ["src", "../src/lib/product-catalog.ts", "../src/lib/product-spec-builders.ts", "../src/types/product.ts"]
+}

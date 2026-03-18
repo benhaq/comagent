@@ -41,6 +41,7 @@ export function App() {
 
   // Checkout state
   const [checkoutItemId, setCheckoutItemId] = useState<string | null>(null)
+  const [userEmail, setUserEmail] = useState("")
 
   const conversationRef = useRef<ChatMessage[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -77,15 +78,18 @@ export function App() {
 
   // Check if already logged in on mount
   useEffect(() => {
-    fetch("/api/auth/profile").then((res) => {
+    fetch("/api/auth/profile").then(async (res) => {
       if (res.ok) {
+        const data = await res.json()
+        setUserEmail(data.email ?? "")
         setLoggedIn(true)
         loadCart()
       }
     }).catch(() => {})
   }, [loadCart])
 
-  const handleLoggedIn = useCallback(() => {
+  const handleLoggedIn = useCallback((email?: string) => {
+    if (email) setUserEmail(email)
     setLoggedIn(true)
     loadCart()
   }, [loadCart])
@@ -258,6 +262,7 @@ export function App() {
                   {checkoutItemId ? (
                     <CheckoutView
                       cartItemId={checkoutItemId}
+                      userEmail={userEmail}
                       onDone={handleCheckoutDone}
                       onBack={handleCheckoutBack}
                     />

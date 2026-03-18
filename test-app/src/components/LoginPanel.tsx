@@ -3,7 +3,7 @@ import { useCrossmintAuth } from "@crossmint/client-sdk-react-ui"
 import { CROSSMINT_CLIENT_API_KEY, CROSSMINT_AUTH_URL } from "../lib/crossmint-config"
 
 interface LoginPanelProps {
-  onLoggedIn: () => void
+  onLoggedIn: (email?: string) => void
 }
 
 type Step = "email" | "otp" | "loading"
@@ -76,7 +76,7 @@ export function LoginPanel({ onLoggedIn }: LoginPanelProps) {
         return
       }
 
-      onLoggedIn()
+      onLoggedIn(email.trim())
     } catch (err: any) {
       setError(err.message ?? "OTP verification failed")
       setStep("otp")

@@ -1,18 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useWallet } from "@crossmint/client-sdk-react-ui"
+import { useWallet, type EVMWallet } from "@crossmint/client-sdk-react-ui"
 import { checkout, getOrder, type CheckoutResponse, type OrderStatus } from "../lib/cart-api"
 
 type CheckoutStep = "preparing" | "approving" | "processing" | "completed" | "failed"
 
 interface CheckoutViewProps {
   cartItemId: string
+  userEmail: string
   onDone: () => void
   onBack: () => void
 }
 
-export function CheckoutView({ cartItemId, onDone, onBack }: CheckoutViewProps) {
-  const { wallet } = useWallet()
+export function CheckoutView({ cartItemId, userEmail, onDone, onBack }: CheckoutViewProps) {
+  const { wallet, getOrCreateWallet } = useWallet()
   const [step, setStep] = useState<CheckoutStep>("preparing")
+  const walletRef = useRef<EVMWallet | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [orderData, setOrderData] = useState<CheckoutResponse | null>(null)
   const [orderStatus, setOrderStatus] = useState<OrderStatus | null>(null)
@@ -52,34 +54,47 @@ export function CheckoutView({ cartItemId, onDone, onBack }: CheckoutViewProps) 
     }, 60_000)
   }, [cleanup])
 
+  const ensureWallet = useCallback(async (): Promise<EVMWallet> => {
+    if (walletRef.current) return walletRef.current
+    if (wallet) {
+      walletRef.current = wallet as EVMWallet
+      return wallet as EVMWallet
+    }
+    // Wallet not yet created — initialize it via SDK
+    const w = await getOrCreateWallet({
+      chain: "base-sepolia",
+      signer: { type: "email", email: userEmail },
+    })
+    walletRef.current = w as EVMWallet
+    return w as EVMWallet
+  }, [wallet, getOrCreateWallet, userEmail])
+
   const handleCheckout = useCallback(async () => {
     setError(null)
     setStep("preparing")
 
     try {
-      // 1. Create order on backend
+      // 1. Ensure wallet is initialized
+      const w = await ensureWallet()
+
+      // 2. Create order on backend
       const data = await checkout(cartItemId)
       setOrderData(data)
 
-      // 2. Sign with wallet SDK (triggers email OTP)
+      // 3. Sign with wallet SDK (triggers email OTP)
       setStep("approving")
-      if (!wallet) {
-        setError("Wallet not initialized. Try refreshing.")
-        setStep("failed")
-        return
-      }
-      await wallet.sendTransaction({
+      await w.sendTransaction({
         calls: [{ transaction: data.serializedTransaction }],
         chain: "base-sepolia",
       })
 
-      // 3. Poll for completion
+      // 4. Poll for completion
       startPolling(data.orderId)
     } catch (err: any) {
       setStep("failed")
       setError(err.message ?? "Checkout failed")
     }
-  }, [cartItemId, wallet, startPolling])
+  }, [cartItemId, ensureWallet, startPolling])
 
   // Auto-start checkout on mount
   useEffect(() => {
@@ -137,14 +152,20 @@ export function CheckoutView({ cartItemId, onDone, onBack }: CheckoutViewProps) 
             <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
               {orderData && (
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     setError(null)
                     setStep("approving")
-                    wallet?.sendTransaction({
-                      calls: [{ transaction: orderData.serializedTransaction }],
-                      chain: "base-sepolia",
-                    }).then(() => startPolling(orderData.orderId))
-                      .catch((err: any) => { setError(err.message); setStep("failed") })
+                    try {
+                      const w = await ensureWallet()
+                      await w.sendTransaction({
+                        calls: [{ transaction: orderData.serializedTransaction }],
+                        chain: "base-sepolia",
+                      })
+                      startPolling(orderData.orderId)
+                    } catch (err: any) {
+                      setError(err.message)
+                      setStep("failed")
+                    }
                   }}
                   style={btnStyle}
                 >

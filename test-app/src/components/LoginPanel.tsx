@@ -1,12 +1,6 @@
 import { useState, useCallback } from "react"
 import { useCrossmintAuth } from "@crossmint/client-sdk-react-ui"
-
-const CROSSMINT_BASE = "https://staging.crossmint.com"
-const AUTH_URL = `${CROSSMINT_BASE}/api/2024-09-26/session/sdk/auth`
-
-// Client API key — safe to expose (public client key, not a server secret)
-const CLIENT_API_KEY =
-  "ck_staging_65yxv1FqmiT7gVyKPQzUa3bJ4qYcUPuKdkJ5wovyVDFzS9X7S2jPhJBNuRwXp4Mbg398b3wDRx38GZBvfh7QZQ3JvSnEz2DLPqrvbsFQ5DyXcZyCFoQR2UjnmDmKxWrmpnxuH162RjhyyWNYQtXx3rDBaQYZgGFKpiFkHd98WMPZ7TTczvjmczFmFyBDA18fkztm1PefDtjJAMoabC2wEsnq"
+import { CROSSMINT_CLIENT_API_KEY, CROSSMINT_AUTH_URL } from "../lib/crossmint-config"
 
 interface LoginPanelProps {
   onLoggedIn: () => void
@@ -47,11 +41,13 @@ export function LoginPanel({ onLoggedIn }: LoginPanelProps) {
       // 2. Initialize SDK wallet session
       await createAuthSession(oneTimeSecret)
 
-      // 3. Exchange oneTimeSecret for JWT via raw API (backend requires jwt)
-      const refreshRes = await fetch(`${AUTH_URL}/refresh`, {
+      // 3. Exchange oneTimeSecret for JWT via raw API call.
+      //    SDK doesn't expose JWT directly after createAuthSession —
+      //    backend POST /api/auth/session requires jwt field for session cookie.
+      const refreshRes = await fetch(`${CROSSMINT_AUTH_URL}/refresh`, {
         method: "POST",
         headers: {
-          "x-api-key": CLIENT_API_KEY,
+          "x-api-key": CROSSMINT_CLIENT_API_KEY,
           "content-type": "application/json",
         },
         body: JSON.stringify({ refresh: oneTimeSecret }),

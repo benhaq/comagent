@@ -11,10 +11,7 @@ import { registry, CartContext } from "./registry"
 import { CartPanel } from "./components/CartPanel"
 import { LoginPanel } from "./components/LoginPanel"
 import { CheckoutView } from "./components/CheckoutView"
-
-// Client API key — safe to expose (public client key, not a server secret)
-const CROSSMINT_CLIENT_API_KEY =
-  "ck_staging_65yxv1FqmiT7gVyKPQzUa3bJ4qYcUPuKdkJ5wovyVDFzS9X7S2jPhJBNuRwXp4Mbg398b3wDRx38GZBvfh7QZQ3JvSnEz2DLPqrvbsFQ5DyXcZyCFoQR2UjnmDmKxWrmpnxuH162RjhyyWNYQtXx3rDBaQYZgGFKpiFkHd98WMPZ7TTczvjmczFmFyBDA18fkztm1PefDtjJAMoabC2wEsnq"
+import { CROSSMINT_CLIENT_API_KEY } from "./lib/crossmint-config"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

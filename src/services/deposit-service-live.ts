@@ -1,6 +1,6 @@
 import { Effect, Layer } from "effect"
 import BigNumber from "bignumber.js"
-import { eq, and } from "drizzle-orm"
+import { eq, and, sql } from "drizzle-orm"
 import { db } from "../db/client.js"
 import { users } from "../db/schema/users.js"
 import { orders } from "../db/schema/orders.js"
@@ -26,7 +26,7 @@ const impl: DepositServiceShape = {
           db
             .select()
             .from(users)
-            .where(and(eq(users.id, userId), eq(users.walletAddress, address)))
+            .where(and(eq(users.id, userId), sql`lower(${users.walletAddress}) = ${address.toLowerCase()}`))
             .then((rows) => rows[0] ?? null),
         catch: dbError,
       })

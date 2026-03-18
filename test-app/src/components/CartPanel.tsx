@@ -4,10 +4,11 @@ interface CartPanelProps {
   items: CartItemResponse[]
   loading: boolean
   onRemove: (itemId: string) => void
+  onCheckout: (itemId: string) => void
   onClose: () => void
 }
 
-export function CartPanel({ items, loading, onRemove, onClose }: CartPanelProps) {
+export function CartPanel({ items, loading, onRemove, onCheckout, onClose }: CartPanelProps) {
   const total = items.reduce((sum, i) => sum + i.price, 0)
 
   return (
@@ -70,16 +71,29 @@ export function CartPanel({ items, loading, onRemove, onClose }: CartPanelProps)
                 ${(item.price / 100).toFixed(2)}
               </div>
             </div>
-            <button
-              onClick={() => onRemove(item.id)}
-              title="Remove"
-              style={{
-                background: "none", border: "none", color: "#f87171",
-                cursor: "pointer", fontSize: 16, padding: "0 4px", alignSelf: "flex-start",
-              }}
-            >
-              &times;
-            </button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, alignSelf: "flex-start" }}>
+              <button
+                onClick={() => onCheckout(item.id)}
+                title="Checkout"
+                style={{
+                  background: "#4ade80", border: "none", color: "#000",
+                  cursor: "pointer", fontSize: 11, padding: "4px 8px",
+                  borderRadius: 4, fontWeight: 600,
+                }}
+              >
+                Buy
+              </button>
+              <button
+                onClick={() => onRemove(item.id)}
+                title="Remove"
+                style={{
+                  background: "none", border: "none", color: "#f87171",
+                  cursor: "pointer", fontSize: 16, padding: "0 4px",
+                }}
+              >
+                &times;
+              </button>
+            </div>
           </div>
         ))}
       </div>

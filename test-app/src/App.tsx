@@ -1,5 +1,6 @@
 // test-app/src/App.tsx
 import { useState, useRef, useCallback, useEffect } from "react"
+import { CrossmintProvider, CrossmintAuthProvider, CrossmintWalletProvider } from "@crossmint/client-sdk-react-ui"
 import { Renderer, JSONUIProvider } from "@json-render/react"
 import { buildProductGridSpec, buildProductDetailSpec } from "@backend/lib/product-spec-builders"
 import type { ProductSearchResult, ProductDetail } from "@backend/types/product"
@@ -9,6 +10,11 @@ import { fetchCart, addToCart, removeFromCart, type CartItemResponse } from "./l
 import { registry, CartContext } from "./registry"
 import { CartPanel } from "./components/CartPanel"
 import { LoginPanel } from "./components/LoginPanel"
+import { CheckoutView } from "./components/CheckoutView"
+
+// Client API key — safe to expose (public client key, not a server secret)
+const CROSSMINT_CLIENT_API_KEY =
+  "ck_staging_65yxv1FqmiT7gVyKPQzUa3bJ4qYcUPuKdkJ5wovyVDFzS9X7S2jPhJBNuRwXp4Mbg398b3wDRx38GZBvfh7QZQ3JvSnEz2DLPqrvbsFQ5DyXcZyCFoQR2UjnmDmKxWrmpnxuH162RjhyyWNYQtXx3rDBaQYZgGFKpiFkHd98WMPZ7TTczvjmczFmFyBDA18fkztm1PefDtjJAMoabC2wEsnq"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -35,6 +41,9 @@ export function App() {
   const [cartItems, setCartItems] = useState<CartItemResponse[]>([])
   const [cartLoading, setCartLoading] = useState(false)
   const [cartOpen, setCartOpen] = useState(false)
+
+  // Checkout state
+  const [checkoutItemId, setCheckoutItemId] = useState<string | null>(null)
 
   const conversationRef = useRef<ChatMessage[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -90,6 +99,7 @@ export function App() {
     setCartItems([])
     setMessages([])
     setSessionId(null)
+    setCheckoutItemId(null)
     conversationRef.current = []
   }, [])
 
@@ -118,6 +128,19 @@ export function App() {
     } catch {
       // ignore
     }
+  }, [])
+
+  const handleCheckout = useCallback((itemId: string) => {
+    setCheckoutItemId(itemId)
+  }, [])
+
+  const handleCheckoutDone = useCallback(() => {
+    setCheckoutItemId(null)
+    loadCart()
+  }, [loadCart])
+
+  const handleCheckoutBack = useCallback(() => {
+    setCheckoutItemId(null)
   }, [])
 
   const handleSend = useCallback(async () => {
@@ -188,132 +211,147 @@ export function App() {
     setSending(false)
   }, [input, sessionId, addMessage, updateLastAssistant])
 
-  if (!loggedIn) {
-    return (
-      <div style={{
-        display: "flex", flexDirection: "column", height: "100vh",
-        background: "#1a1a2e", color: "#eee", fontFamily: "system-ui, sans-serif",
-      }}>
-        <LoginPanel onLoggedIn={handleLoggedIn} />
-      </div>
-    )
-  }
-
   return (
-    <div style={{
-      display: "flex", flexDirection: "column", height: "100vh",
-      background: "#1a1a2e", color: "#eee", fontFamily: "system-ui, sans-serif",
-    }}>
-      {/* Top bar */}
-      <div style={{
-        padding: "10px 16px", background: "#16213e",
-        borderBottom: "1px solid #333", display: "flex", gap: 8, alignItems: "center",
-      }}>
-        <span style={{ fontSize: 13, color: "#4ade80" }}>Logged in</span>
-        <button
-          onClick={handleLogout}
-          style={{
-            background: "#333", border: "1px solid #444", color: "#f87171",
-            padding: "6px 14px", borderRadius: 4, fontSize: 13, cursor: "pointer",
-          }}
-        >
-          Logout
-        </button>
-        <div style={{ flex: 1 }} />
-        <button
-          onClick={() => setCartOpen(!cartOpen)}
-          style={{
-            background: "#0f3460", border: "1px solid #444", color: "#eee",
-            padding: "6px 14px", borderRadius: 4, fontSize: 13, cursor: "pointer",
-          }}
-        >
-          Cart ({cartItems.length})
-        </button>
-      </div>
+    <CrossmintProvider apiKey={CROSSMINT_CLIENT_API_KEY}>
+      <CrossmintAuthProvider>
+        <CrossmintWalletProvider createOnLogin={{ chain: "base-sepolia", signer: { type: "email" } }}>
+          {!loggedIn ? (
+            <div style={{
+              display: "flex", flexDirection: "column", height: "100vh",
+              background: "#1a1a2e", color: "#eee", fontFamily: "system-ui, sans-serif",
+            }}>
+              <LoginPanel onLoggedIn={handleLoggedIn} />
+            </div>
+          ) : (
+            <div style={{
+              display: "flex", flexDirection: "column", height: "100vh",
+              background: "#1a1a2e", color: "#eee", fontFamily: "system-ui, sans-serif",
+            }}>
+              {/* Top bar */}
+              <div style={{
+                padding: "10px 16px", background: "#16213e",
+                borderBottom: "1px solid #333", display: "flex", gap: 8, alignItems: "center",
+              }}>
+                <span style={{ fontSize: 13, color: "#4ade80" }}>Logged in</span>
+                <button
+                  onClick={handleLogout}
+                  style={{
+                    background: "#333", border: "1px solid #444", color: "#f87171",
+                    padding: "6px 14px", borderRadius: 4, fontSize: 13, cursor: "pointer",
+                  }}
+                >
+                  Logout
+                </button>
+                <div style={{ flex: 1 }} />
+                <button
+                  onClick={() => setCartOpen(!cartOpen)}
+                  style={{
+                    background: "#0f3460", border: "1px solid #444", color: "#eee",
+                    padding: "6px 14px", borderRadius: 4, fontSize: 13, cursor: "pointer",
+                  }}
+                >
+                  Cart ({cartItems.length})
+                </button>
+              </div>
 
-      {/* Main area: chat + optional cart panel */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        {/* Chat area */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          {/* Messages */}
-          <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-            <CartContext.Provider value={{ onAddToCart: handleAddToCart }}>
-              {messages.map((msg) => {
-                if (msg.spec) {
-                  return (
-                    <div key={msg.id} style={{ alignSelf: "flex-start", maxWidth: "90%" }}>
-                      <JSONUIProvider registry={registry}>
-                        <Renderer spec={msg.spec as any} registry={registry} />
-                      </JSONUIProvider>
-                    </div>
-                  )
-                }
+              {/* Main area: chat/checkout + optional cart panel */}
+              <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+                {/* Chat or Checkout area */}
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                  {checkoutItemId ? (
+                    <CheckoutView
+                      cartItemId={checkoutItemId}
+                      onDone={handleCheckoutDone}
+                      onBack={handleCheckoutBack}
+                    />
+                  ) : (
+                    <>
+                      {/* Messages */}
+                      <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+                        <CartContext.Provider value={{ onAddToCart: handleAddToCart }}>
+                          {messages.map((msg) => {
+                            if (msg.spec) {
+                              return (
+                                <div key={msg.id} style={{ alignSelf: "flex-start", maxWidth: "90%" }}>
+                                  <JSONUIProvider registry={registry}>
+                                    <Renderer spec={msg.spec as any} registry={registry} />
+                                  </JSONUIProvider>
+                                </div>
+                              )
+                            }
 
-                const styles: Record<string, React.CSSProperties> = {
-                  user: { background: "#0f3460", alignSelf: "flex-end" },
-                  assistant: { background: "#222", alignSelf: "flex-start", border: "1px solid #333" },
-                  tool: { background: "#1a2a1a", alignSelf: "flex-start", border: "1px solid #2a4a2a", fontFamily: "monospace", fontSize: 12 },
-                  error: { background: "#3a1a1a", border: "1px solid #4a2a2a", alignSelf: "center", color: "#f88" },
-                  system: { background: "transparent", alignSelf: "center", color: "#888", fontSize: 12 },
-                }
+                            const styles: Record<string, React.CSSProperties> = {
+                              user: { background: "#0f3460", alignSelf: "flex-end" },
+                              assistant: { background: "#222", alignSelf: "flex-start", border: "1px solid #333" },
+                              tool: { background: "#1a2a1a", alignSelf: "flex-start", border: "1px solid #2a4a2a", fontFamily: "monospace", fontSize: 12 },
+                              error: { background: "#3a1a1a", border: "1px solid #4a2a2a", alignSelf: "center", color: "#f88" },
+                              system: { background: "transparent", alignSelf: "center", color: "#888", fontSize: 12 },
+                            }
 
-                return (
-                  <div
-                    key={msg.id}
-                    style={{
-                      maxWidth: "80%", padding: "10px 14px", borderRadius: 12,
-                      fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word",
-                      ...styles[msg.role],
-                    }}
-                  >
-                    {msg.content}
-                  </div>
-                )
-              })}
-            </CartContext.Provider>
-            <div ref={messagesEndRef} />
-          </div>
+                            return (
+                              <div
+                                key={msg.id}
+                                style={{
+                                  maxWidth: "80%", padding: "10px 14px", borderRadius: 12,
+                                  fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word",
+                                  ...styles[msg.role],
+                                }}
+                              >
+                                {msg.content}
+                              </div>
+                            )
+                          })}
+                        </CartContext.Provider>
+                        <div ref={messagesEndRef} />
+                      </div>
 
-          {/* Input bar */}
-          <div style={{
-            padding: "12px 16px", background: "#16213e",
-            borderTop: "1px solid #333", display: "flex", gap: 8,
-          }}>
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !sending) handleSend() }}
-              placeholder="Type a message..."
-              autoFocus
-              style={{
-                flex: 1, background: "#0f3460", border: "1px solid #444",
-                color: "#eee", padding: "10px 14px", borderRadius: 8, fontSize: 14, outline: "none",
-              }}
-            />
-            <button
-              onClick={handleSend}
-              disabled={sending}
-              style={{
-                background: sending ? "#555" : "#e94560", color: "#fff",
-                border: "none", padding: "10px 20px", borderRadius: 8,
-                cursor: sending ? "not-allowed" : "pointer", fontSize: 14,
-              }}
-            >
-              Send
-            </button>
-          </div>
-        </div>
+                      {/* Input bar */}
+                      <div style={{
+                        padding: "12px 16px", background: "#16213e",
+                        borderTop: "1px solid #333", display: "flex", gap: 8,
+                      }}>
+                        <input
+                          value={input}
+                          onChange={(e) => setInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter" && !sending) handleSend() }}
+                          placeholder="Type a message..."
+                          autoFocus
+                          style={{
+                            flex: 1, background: "#0f3460", border: "1px solid #444",
+                            color: "#eee", padding: "10px 14px", borderRadius: 8, fontSize: 14, outline: "none",
+                          }}
+                        />
+                        <button
+                          onClick={handleSend}
+                          disabled={sending}
+                          style={{
+                            background: sending ? "#555" : "#e94560", color: "#fff",
+                            border: "none", padding: "10px 20px", borderRadius: 8,
+                            cursor: sending ? "not-allowed" : "pointer", fontSize: 14,
+                          }}
+                        >
+                          Send
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
 
-        {/* Cart panel */}
-        {cartOpen && (
-          <CartPanel
-            items={cartItems}
-            loading={cartLoading}
-            onRemove={handleRemoveFromCart}
-            onClose={() => setCartOpen(false)}
-          />
-        )}
-      </div>
-    </div>
+                {/* Cart panel */}
+                {cartOpen && (
+                  <CartPanel
+                    items={cartItems}
+                    loading={cartLoading}
+                    onRemove={handleRemoveFromCart}
+                    onCheckout={handleCheckout}
+                    onClose={() => setCartOpen(false)}
+                  />
+                )}
+              </div>
+            </div>
+          )}
+        </CrossmintWalletProvider>
+      </CrossmintAuthProvider>
+    </CrossmintProvider>
   )
 }

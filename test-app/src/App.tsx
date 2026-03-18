@@ -11,6 +11,7 @@ import { registry, CartContext } from "./registry"
 import { CartPanel } from "./components/CartPanel"
 import { LoginPanel } from "./components/LoginPanel"
 import { CheckoutView } from "./components/CheckoutView"
+import { CrossmintJwtSync } from "./components/CrossmintJwtSync"
 import { CROSSMINT_CLIENT_API_KEY } from "./lib/crossmint-config"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -42,6 +43,7 @@ export function App() {
   // Checkout state
   const [checkoutItemId, setCheckoutItemId] = useState<string | null>(null)
   const [userEmail, setUserEmail] = useState("")
+  const [crossmintJwt, setCrossmintJwt] = useState<string | null>(null)
 
   const conversationRef = useRef<ChatMessage[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -82,14 +84,19 @@ export function App() {
       if (res.ok) {
         const data = await res.json()
         setUserEmail(data.email ?? "")
+        // Restore Crossmint JWT from sessionStorage if available
+        const storedJwt = sessionStorage.getItem("crossmint_jwt")
+        if (storedJwt) setCrossmintJwt(storedJwt)
         setLoggedIn(true)
         loadCart()
       }
     }).catch(() => {})
   }, [loadCart])
 
-  const handleLoggedIn = useCallback((email?: string) => {
-    if (email) setUserEmail(email)
+  const handleLoggedIn = useCallback((email: string, jwt: string) => {
+    setUserEmail(email)
+    setCrossmintJwt(jwt)
+    sessionStorage.setItem("crossmint_jwt", jwt)
     setLoggedIn(true)
     loadCart()
   }, [loadCart])
@@ -101,6 +108,8 @@ export function App() {
     setMessages([])
     setSessionId(null)
     setCheckoutItemId(null)
+    setCrossmintJwt(null)
+    sessionStorage.removeItem("crossmint_jwt")
     conversationRef.current = []
   }, [])
 
@@ -215,6 +224,7 @@ export function App() {
   return (
     <CrossmintProvider apiKey={CROSSMINT_CLIENT_API_KEY}>
       <CrossmintWalletProvider>
+        <CrossmintJwtSync jwt={crossmintJwt} />
           {!loggedIn ? (
             <div style={{
               display: "flex", flexDirection: "column", height: "100vh",

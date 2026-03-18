@@ -2,7 +2,7 @@ import { useState } from "react"
 import { CROSSMINT_CLIENT_API_KEY, CROSSMINT_AUTH_URL } from "../lib/crossmint-config"
 
 interface LoginPanelProps {
-  onLoggedIn: (email?: string) => void
+  onLoggedIn: (email: string, crossmintJwt: string) => void
 }
 
 type Step = "email" | "otp" | "loading"
@@ -104,7 +104,7 @@ export function LoginPanel({ onLoggedIn }: LoginPanelProps) {
         return
       }
 
-      onLoggedIn(email.trim())
+      onLoggedIn(email.trim(), refreshData.jwt)
     } catch (err: any) {
       setError(err.message)
       setStep("otp")

@@ -2,6 +2,7 @@ import {
   pgTable,
   uuid,
   varchar,
+  numeric,
   timestamp,
   index,
   uniqueIndex,
@@ -16,12 +17,16 @@ export const orders = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     type: varchar("type", { length: 20 }).notNull().default("checkout"),
-    crossmintOrderId: varchar("crossmint_order_id", { length: 255 }).notNull(),
+    crossmintOrderId: varchar("crossmint_order_id", { length: 255 }),
+    amountPas: numeric("amount_pas"),
+    amountUsdc: numeric("amount_usdc"),
+    polkadotTxHash: varchar("polkadot_tx_hash", { length: 255 }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => [
     index("idx_orders_user_id").on(table.userId),
     uniqueIndex("idx_orders_crossmint_order_id").on(table.crossmintOrderId),
+    uniqueIndex("idx_orders_polkadot_tx_hash").on(table.polkadotTxHash),
   ]
 )
 

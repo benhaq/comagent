@@ -78,19 +78,31 @@ const impl: OrderServiceShape = {
       ], { concurrency: "unbounded" })
 
       // Fetch Crossmint order details in parallel (max 5 concurrent)
+      // Deposit orders have no crossmintOrderId — return local data only
       const results: OrderSummary[] = yield* Effect.all(
-        localOrders.map((local) =>
-          getCrossmintOrder(local.crossmintOrderId).pipe(
+        localOrders.map((local) => {
+          if (!local.crossmintOrderId) {
+            return Effect.succeed({
+              orderId: local.id,
+              crossmintOrderId: "",
+              type: local.type,
+              phase: "funded",
+              lineItems: [],
+              payment: { status: "funded", currency: "usdc" },
+              createdAt: local.createdAt.toISOString(),
+            } satisfies OrderSummary)
+          }
+          return getCrossmintOrder(local.crossmintOrderId).pipe(
             Effect.map((crossmintOrder) =>
               mapCrossmintOrder(
-                local.id, local.crossmintOrderId, local.type,
+                local.id, local.crossmintOrderId!, local.type,
                 crossmintOrder, local.createdAt.toISOString()
               )
             ),
             Effect.catchAll(() =>
               Effect.succeed({
                 orderId: local.id,
-                crossmintOrderId: local.crossmintOrderId,
+                crossmintOrderId: local.crossmintOrderId ?? "",
                 type: local.type,
                 phase: "unknown",
                 lineItems: [],
@@ -99,7 +111,7 @@ const impl: OrderServiceShape = {
               } satisfies OrderSummary)
             ),
           )
-        ),
+        }),
         { concurrency: 5 },
       )
 
@@ -135,6 +147,18 @@ const impl: OrderServiceShape = {
 
       if (!local || local.userId !== userId) {
         return yield* Effect.fail(new OrderNotFoundError({ orderId }))
+      }
+
+      if (!local.crossmintOrderId) {
+        return {
+          orderId: local.id,
+          crossmintOrderId: "",
+          type: local.type,
+          phase: "funded",
+          lineItems: [],
+          payment: { status: "funded", currency: "usdc" },
+          createdAt: local.createdAt.toISOString(),
+        }
       }
 
       const crossmintOrder = yield* getCrossmintOrder(local.crossmintOrderId)

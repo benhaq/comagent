@@ -233,6 +233,30 @@ export const OrderIdParamSchema = z.object({
   }),
 })
 
+// ─── Deposit schemas ────────────────────────────────────────────────────────
+
+export const UserIdParamSchema = z.object({
+  userId: z.string().uuid().openapi({
+    param: { name: "userId", in: "path" },
+    example: "f0e1d2c3-b4a5-6789-0abc-def123456789",
+  }),
+})
+
+export const DepositConfirmRequestSchema = z
+  .object({
+    amountPAS: z.number().positive().openapi({ example: 100 }),
+    transactionHash: z.string().min(1).openapi({ example: "0xabc123...polkadot_tx_hash" }),
+  })
+  .openapi("DepositConfirmRequest")
+
+export const DepositConfirmResponseSchema = z
+  .object({
+    orderId: z.string().uuid().openapi({ example: "d1e2f3a4-b5c6-7890-defg-234567890123" }),
+    amountUSDC: z.string().openapi({ example: "10.00" }),
+    crossmintFundingStatus: z.string().openapi({ example: "funded" }),
+  })
+  .openapi("DepositConfirmResponse")
+
 // ─── Shared validation hook ──────────────────────────────────────────────────
 
 /**

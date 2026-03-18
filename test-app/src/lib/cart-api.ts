@@ -80,11 +80,40 @@ export async function checkout(cartItemId: string): Promise<CheckoutResponse> {
 export interface OrderStatus {
   orderId: string
   crossmintOrderId: string
+  type: string
   phase: string
   lineItems: unknown[]
   payment: { status: string; currency: string }
   quote?: { totalPrice?: { amount: string; currency: string } }
   createdAt: string
+}
+
+export interface OrderListParams {
+  page?: number
+  limit?: number
+  type?: string
+  phase?: string
+  status?: string
+}
+
+export interface OrderListResponse {
+  orders: OrderStatus[]
+  total: number
+  page: number
+  limit: number
+}
+
+export async function listOrders(params?: OrderListParams): Promise<OrderListResponse> {
+  const qs = new URLSearchParams()
+  if (params?.page) qs.set("page", String(params.page))
+  if (params?.limit) qs.set("limit", String(params.limit))
+  if (params?.type) qs.set("type", params.type)
+  if (params?.phase) qs.set("phase", params.phase)
+  if (params?.status) qs.set("status", params.status)
+  const query = qs.toString()
+  const res = await fetch(`/api/orders${query ? `?${query}` : ""}`)
+  if (!res.ok) throw new Error(`Failed to fetch orders: ${res.status}`)
+  return res.json()
 }
 
 export async function getOrder(orderId: string): Promise<OrderStatus> {

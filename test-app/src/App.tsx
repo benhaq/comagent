@@ -12,6 +12,7 @@ import { CartPanel } from "./components/CartPanel"
 import { LoginPanel } from "./components/LoginPanel"
 import { CheckoutView } from "./components/CheckoutView"
 import { CrossmintJwtSync } from "./components/CrossmintJwtSync"
+import { OrdersPanel } from "./components/OrdersPanel"
 import { CROSSMINT_CLIENT_API_KEY } from "./lib/crossmint-config"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -39,6 +40,9 @@ export function App() {
   const [cartItems, setCartItems] = useState<CartItemResponse[]>([])
   const [cartLoading, setCartLoading] = useState(false)
   const [cartOpen, setCartOpen] = useState(false)
+
+  // Orders panel state
+  const [ordersOpen, setOrdersOpen] = useState(false)
 
   // Checkout state
   const [checkoutItemId, setCheckoutItemId] = useState<string | null>(null)
@@ -257,9 +261,18 @@ export function App() {
                 </button>
                 <div style={{ flex: 1 }} />
                 <button
-                  onClick={() => setCartOpen(!cartOpen)}
+                  onClick={() => { setOrdersOpen(!ordersOpen); if (!ordersOpen) setCartOpen(false) }}
                   style={{
-                    background: "#0f3460", border: "1px solid #444", color: "#eee",
+                    background: ordersOpen ? "#1e40af" : "#0f3460", border: "1px solid #444", color: "#eee",
+                    padding: "6px 14px", borderRadius: 4, fontSize: 13, cursor: "pointer",
+                  }}
+                >
+                  Orders
+                </button>
+                <button
+                  onClick={() => { setCartOpen(!cartOpen); if (!cartOpen) setOrdersOpen(false) }}
+                  style={{
+                    background: cartOpen ? "#1e40af" : "#0f3460", border: "1px solid #444", color: "#eee",
                     padding: "6px 14px", borderRadius: 4, fontSize: 13, cursor: "pointer",
                   }}
                 >
@@ -351,7 +364,7 @@ export function App() {
                   )}
                 </div>
 
-                {/* Cart panel */}
+                {/* Side panels */}
                 {cartOpen && (
                   <CartPanel
                     items={cartItems}
@@ -360,6 +373,9 @@ export function App() {
                     onCheckout={handleCheckout}
                     onClose={() => setCartOpen(false)}
                   />
+                )}
+                {ordersOpen && (
+                  <OrdersPanel onClose={() => setOrdersOpen(false)} />
                 )}
               </div>
             </div>

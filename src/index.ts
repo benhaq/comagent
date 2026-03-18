@@ -1,5 +1,5 @@
 import { OpenAPIHono } from "@hono/zod-openapi";
-import { swaggerUI } from "@hono/swagger-ui";
+
 import { env } from "./lib/env.js";
 import logger from "./lib/logger.js";
 import { authMiddleware } from "./middleware/auth.js";
@@ -100,7 +100,23 @@ app.doc("/doc", {
     description: "AI Shopping Assistant — ReAct chat agent backend",
   },
 });
-app.get("/swagger", swaggerUI({ url: "/doc" }));
+app.get("/swagger", (c) => {
+  return c.html(`<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8"/><title>ComAgent API</title>
+<link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css"/>
+</head><body>
+<div id="swagger-ui"></div>
+<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script>
+SwaggerUIBundle({
+  url: "/doc",
+  dom_id: "#swagger-ui",
+  requestInterceptor: (req) => { req.credentials = "include"; return req; },
+});
+</script>
+</body></html>`);
+});
 
 // Serve test chat page
 app.get("/test", async (c) => {

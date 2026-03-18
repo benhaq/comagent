@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect"
-import { eq, desc } from "drizzle-orm"
+import { eq, desc, sql, and } from "drizzle-orm"
 import { db } from "../db/client.js"
 import { orders } from "../db/schema/orders.js"
 import {
@@ -8,29 +8,14 @@ import {
 } from "../lib/errors.js"
 import { getCrossmintOrder } from "../lib/crossmint-client.js"
 import { OrderService } from "./order-service.js"
-import type { OrderServiceShape, OrderSummary } from "./order-service.js"
-import type { Order } from "../db/schema/orders.js"
+import type { OrderServiceShape, OrderSummary, ListOrdersParams } from "./order-service.js"
 
 const dbError = (cause: unknown) => new DatabaseError({ cause })
-
-function mapDepositOrder(local: Order): OrderSummary {
-  return {
-    orderId: local.id,
-    type: "deposit",
-    crossmintOrderId: null,
-    phase: "completed",
-    lineItems: [],
-    payment: { status: "funded", currency: "usdc" },
-    amountPas: local.amountPas,
-    amountUsdc: local.amountUsdc,
-    polkadotTxHash: local.polkadotTxHash,
-    createdAt: local.createdAt.toISOString(),
-  }
-}
 
 function mapCrossmintOrder(
   localOrderId: string,
   crossmintOrderId: string,
+  orderType: string,
   crossmintOrder: {
     phase: string
     lineItems?: unknown[]
@@ -41,8 +26,8 @@ function mapCrossmintOrder(
 ): OrderSummary {
   return {
     orderId: localOrderId,
-    type: "checkout",
     crossmintOrderId,
+    type: orderType,
     phase: crossmintOrder.phase,
     lineItems: crossmintOrder.lineItems ?? [],
     payment: {
@@ -57,54 +42,83 @@ function mapCrossmintOrder(
 }
 
 const impl: OrderServiceShape = {
-  listOrders: (userId) =>
+  listOrders: (userId, params?: ListOrdersParams) =>
     Effect.gen(function* () {
-      const localOrders = yield* Effect.tryPromise({
-        try: () =>
-          db
-            .select()
-            .from(orders)
-            .where(eq(orders.userId, userId))
-            .orderBy(desc(orders.createdAt)),
-        catch: dbError,
-      })
+      const page = Math.max(1, params?.page ?? 1)
+      const limit = Math.min(100, Math.max(1, params?.limit ?? 20))
+      const offset = (page - 1) * limit
 
-      const results: OrderSummary[] = []
+      // Build where clause — filter by type in DB (it's a local column)
+      const whereConditions = params?.type
+        ? and(eq(orders.userId, userId), eq(orders.type, params.type))
+        : eq(orders.userId, userId)
 
-      for (const local of localOrders) {
-        if (local.type === "deposit") {
-          results.push(mapDepositOrder(local))
-          continue
-        }
+      // Run COUNT and SELECT in parallel (no data dependency)
+      const [totalRows, localOrders] = yield* Effect.all([
+        Effect.tryPromise({
+          try: () =>
+            db
+              .select({ count: sql<number>`count(*)::int` })
+              .from(orders)
+              .where(whereConditions)
+              .then((rows) => rows[0]?.count ?? 0),
+          catch: dbError,
+        }),
+        Effect.tryPromise({
+          try: () =>
+            db
+              .select()
+              .from(orders)
+              .where(whereConditions)
+              .orderBy(desc(orders.createdAt))
+              .limit(limit)
+              .offset(offset),
+          catch: dbError,
+        }),
+      ], { concurrency: "unbounded" })
 
-        const crossmintOrder = yield* getCrossmintOrder(local.crossmintOrderId!).pipe(
-          Effect.catchAll(() => Effect.succeed(null))
-        )
-
-        if (crossmintOrder) {
-          results.push(
-            mapCrossmintOrder(
-              local.id,
-              local.crossmintOrderId!,
-              crossmintOrder,
-              local.createdAt.toISOString()
-            )
+      // Fetch Crossmint order details in parallel (max 5 concurrent)
+      const results: OrderSummary[] = yield* Effect.all(
+        localOrders.map((local) =>
+          getCrossmintOrder(local.crossmintOrderId).pipe(
+            Effect.map((crossmintOrder) =>
+              mapCrossmintOrder(
+                local.id, local.crossmintOrderId, local.type,
+                crossmintOrder, local.createdAt.toISOString()
+              )
+            ),
+            Effect.catchAll(() =>
+              Effect.succeed({
+                orderId: local.id,
+                crossmintOrderId: local.crossmintOrderId,
+                type: local.type,
+                phase: "unknown",
+                lineItems: [],
+                payment: { status: "unknown", currency: "usdc" },
+                createdAt: local.createdAt.toISOString(),
+              } satisfies OrderSummary)
+            ),
           )
-        } else {
-          // Crossmint fetch failed — return minimal local data
-          results.push({
-            orderId: local.id,
-            type: "checkout",
-            crossmintOrderId: local.crossmintOrderId,
-            phase: "unknown",
-            lineItems: [],
-            payment: { status: "unknown", currency: "usdc" },
-            createdAt: local.createdAt.toISOString(),
-          })
-        }
+        ),
+        { concurrency: 5 },
+      )
+
+      // Apply post-fetch filters (phase/status come from Crossmint, not DB)
+      let filtered = results
+      if (params?.phase) {
+        filtered = filtered.filter((o) => o.phase === params.phase)
+      }
+      if (params?.status) {
+        filtered = filtered.filter((o) => o.payment.status === params.status)
       }
 
-      return results
+      const hasPostFilters = !!(params?.phase || params?.status)
+      return {
+        orders: filtered,
+        total: hasPostFilters ? filtered.length : totalRows,
+        page,
+        limit,
+      }
     }),
 
   getOrder: (userId, orderId) =>
@@ -123,15 +137,12 @@ const impl: OrderServiceShape = {
         return yield* Effect.fail(new OrderNotFoundError({ orderId }))
       }
 
-      if (local.type === "deposit") {
-        return mapDepositOrder(local)
-      }
-
-      const crossmintOrder = yield* getCrossmintOrder(local.crossmintOrderId!)
+      const crossmintOrder = yield* getCrossmintOrder(local.crossmintOrderId)
 
       return mapCrossmintOrder(
         local.id,
-        local.crossmintOrderId!,
+        local.crossmintOrderId,
+        local.type,
         crossmintOrder,
         local.createdAt.toISOString()
       )

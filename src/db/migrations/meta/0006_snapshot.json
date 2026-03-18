@@ -1,5 +1,5 @@
 {
-  "id": "36c294c4-7ae7-48af-ade6-d0d6f853ee6a",
+  "id": "1a2617f5-dc4a-4877-a81c-3ed665364e57",
   "prevId": "15228095-9d4a-4cb4-b8a8-063bcd6e4e05",
   "version": "7",
   "dialect": "postgresql",
@@ -342,25 +342,7 @@
           "name": "crossmint_order_id",
           "type": "varchar(255)",
           "primaryKey": false,
-          "notNull": false
-        },
-        "amount_pas": {
-          "name": "amount_pas",
-          "type": "varchar(50)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "amount_usdc": {
-          "name": "amount_usdc",
-          "type": "varchar(50)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "polkadot_tx_hash": {
-          "name": "polkadot_tx_hash",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "created_at": {
           "name": "created_at",
@@ -391,21 +373,6 @@
           "columns": [
             {
               "expression": "crossmint_order_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_orders_polkadot_tx_hash": {
-          "name": "idx_orders_polkadot_tx_hash",
-          "columns": [
-            {
-              "expression": "polkadot_tx_hash",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

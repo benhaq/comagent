@@ -49,15 +49,6 @@ export interface CrossmintOrderResponse {
   }
 }
 
-export interface CrossmintTransactionResponse {
-  id: string
-  status: string
-  onChain?: {
-    txId?: string
-    chain?: string
-  }
-}
-
 // ---------------------------------------------------------------------------
 // API helpers
 // ---------------------------------------------------------------------------
@@ -118,17 +109,23 @@ export const createCrossmintOrder = (
   })
 
 // ---------------------------------------------------------------------------
-// Sign transaction via Crossmint Wallets API
+// Create wallet transaction via Wallets API (awaiting-approval for email signer)
 // ---------------------------------------------------------------------------
 
-export const signCrossmintTransaction = (
-  walletId: string,
+export interface WalletTransactionResponse {
+  id: string
+  status: string
+  approvals?: { pending?: Array<{ message: string }> }
+}
+
+export const createWalletTransaction = (
+  walletAddress: string,
   serializedTransaction: string,
   chain: string = "base-sepolia"
-): Effect.Effect<CrossmintTransactionResponse, CheckoutPaymentError> =>
+): Effect.Effect<WalletTransactionResponse, CheckoutPaymentError> =>
   Effect.tryPromise({
     try: async () => {
-      const url = `${baseUrl()}/api/2022-06-09/wallets/${walletId}/transactions`
+      const url = `${baseUrl()}/api/2022-06-09/wallets/${walletAddress}/transactions`
       const body = {
         params: {
           calls: [{ transaction: serializedTransaction }],
@@ -136,7 +133,7 @@ export const signCrossmintTransaction = (
         },
       }
 
-      logger.info({ walletId, chain }, "Signing Crossmint transaction")
+      logger.info({ walletAddress, chain }, "Creating wallet transaction (awaiting-approval)")
 
       const res = await fetch(url, {
         method: "POST",
@@ -148,12 +145,12 @@ export const signCrossmintTransaction = (
       const data = await res.json()
 
       if (!res.ok) {
-        logger.error({ status: res.status, data, walletId }, "Crossmint transaction signing failed")
-        throw new Error(data?.message ?? `Transaction signing failed: ${res.status}`)
+        logger.error({ status: res.status, data, walletAddress }, "Wallet transaction creation failed")
+        throw new Error(data?.message ?? `Transaction creation failed: ${res.status}`)
       }
 
-      logger.info({ walletId, txId: data.id }, "Crossmint transaction signed")
-      return data as CrossmintTransactionResponse
+      logger.info({ walletAddress, txId: data.id, status: data.status }, "Wallet transaction created")
+      return data as WalletTransactionResponse
     },
     catch: (cause) => new CheckoutPaymentError({ cause }),
   })

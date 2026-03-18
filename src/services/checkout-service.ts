@@ -13,6 +13,8 @@ export interface CheckoutResult {
   orderId: string
   crossmintOrderId: string
   phase: string
+  transactionId: string
+  walletAddress: string
 }
 
 export interface CheckoutServiceShape {

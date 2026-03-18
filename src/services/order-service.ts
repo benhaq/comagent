@@ -4,25 +4,36 @@ import type {
   OrderNotFoundError,
   CheckoutOrderCreationError,
 } from "../lib/errors.js"
-import type { OrderType } from "../db/schema/orders.js"
 
 export interface OrderSummary {
   orderId: string
-  type: OrderType
-  crossmintOrderId: string | null
+  crossmintOrderId: string
+  type: string
   phase: string
   lineItems: unknown[]
   payment: { status: string; currency: string }
   quote?: { totalPrice?: { amount: string; currency: string } }
-  amountPas?: string | null
-  amountUsdc?: string | null
-  polkadotTxHash?: string | null
   createdAt: string
 }
 
+export interface ListOrdersParams {
+  page?: number
+  limit?: number
+  type?: string
+  phase?: string
+  status?: string
+}
+
+export interface PaginatedOrders {
+  orders: OrderSummary[]
+  total: number
+  page: number
+  limit: number
+}
+
 export interface OrderServiceShape {
-  listOrders(userId: string): Effect.Effect<
-    OrderSummary[],
+  listOrders(userId: string, params?: ListOrdersParams): Effect.Effect<
+    PaginatedOrders,
     DatabaseError | CheckoutOrderCreationError
   >
 

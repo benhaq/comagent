@@ -221,18 +221,21 @@ export function App() {
     setSending(false)
   }, [input, sessionId, addMessage, updateLastAssistant])
 
+  if (!loggedIn) {
+    return (
+      <div style={{
+        display: "flex", flexDirection: "column", height: "100vh",
+        background: "#1a1a2e", color: "#eee", fontFamily: "system-ui, sans-serif",
+      }}>
+        <LoginPanel onLoggedIn={handleLoggedIn} />
+      </div>
+    )
+  }
+
   return (
     <CrossmintProvider apiKey={CROSSMINT_CLIENT_API_KEY}>
       <CrossmintWalletProvider>
         <CrossmintJwtSync jwt={crossmintJwt} />
-          {!loggedIn ? (
-            <div style={{
-              display: "flex", flexDirection: "column", height: "100vh",
-              background: "#1a1a2e", color: "#eee", fontFamily: "system-ui, sans-serif",
-            }}>
-              <LoginPanel onLoggedIn={handleLoggedIn} />
-            </div>
-          ) : (
             <div style={{
               display: "flex", flexDirection: "column", height: "100vh",
               background: "#1a1a2e", color: "#eee", fontFamily: "system-ui, sans-serif",
@@ -360,7 +363,6 @@ export function App() {
                 )}
               </div>
             </div>
-          )}
       </CrossmintWalletProvider>
     </CrossmintProvider>
   )

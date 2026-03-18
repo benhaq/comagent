@@ -1,6 +1,6 @@
 import { Effect } from "effect"
 import { env } from "./env.js"
-import { CheckoutOrderCreationError, CheckoutPaymentError } from "./errors.js"
+import { CheckoutOrderCreationError } from "./errors.js"
 import logger from "./logger.js"
 
 // ---------------------------------------------------------------------------
@@ -46,15 +46,6 @@ export interface CrossmintOrderResponse {
         serializedTransaction?: string
       }
     }
-  }
-}
-
-export interface CrossmintTransactionResponse {
-  id: string
-  status: string
-  onChain?: {
-    txId?: string
-    chain?: string
   }
 }
 
@@ -115,47 +106,6 @@ export const createCrossmintOrder = (
       return data as CrossmintOrderResponse
     },
     catch: (cause) => new CheckoutOrderCreationError({ cause }),
-  })
-
-// ---------------------------------------------------------------------------
-// Sign transaction via Crossmint Wallets API
-// ---------------------------------------------------------------------------
-
-export const signCrossmintTransaction = (
-  walletId: string,
-  serializedTransaction: string,
-  chain: string = "base-sepolia"
-): Effect.Effect<CrossmintTransactionResponse, CheckoutPaymentError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const url = `${baseUrl()}/api/2022-06-09/wallets/${walletId}/transactions`
-      const body = {
-        params: {
-          calls: [{ transaction: serializedTransaction }],
-          chain,
-        },
-      }
-
-      logger.info({ walletId, chain }, "Signing Crossmint transaction")
-
-      const res = await fetch(url, {
-        method: "POST",
-        headers: headers(),
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(30_000),
-      })
-
-      const data = await res.json()
-
-      if (!res.ok) {
-        logger.error({ status: res.status, data, walletId }, "Crossmint transaction signing failed")
-        throw new Error(data?.message ?? `Transaction signing failed: ${res.status}`)
-      }
-
-      logger.info({ walletId, txId: data.id }, "Crossmint transaction signed")
-      return data as CrossmintTransactionResponse
-    },
-    catch: (cause) => new CheckoutPaymentError({ cause }),
   })
 
 // ---------------------------------------------------------------------------

@@ -6,13 +6,13 @@ import type {
   CheckoutMissingAddressError,
   InsufficientFundsError,
   CheckoutOrderCreationError,
-  CheckoutPaymentError,
 } from "../lib/errors.js"
 
 export interface CheckoutResult {
   orderId: string
   crossmintOrderId: string
   phase: string
+  serializedTransaction: string
 }
 
 export interface CheckoutServiceShape {
@@ -23,7 +23,6 @@ export interface CheckoutServiceShape {
     | CheckoutMissingAddressError
     | InsufficientFundsError
     | CheckoutOrderCreationError
-    | CheckoutPaymentError
     | DatabaseError
   >
 }

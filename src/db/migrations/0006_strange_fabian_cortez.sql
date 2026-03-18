@@ -1,0 +1,1 @@
+ALTER TABLE "orders" ADD COLUMN "type" varchar(20) DEFAULT 'checkout' NOT NULL;

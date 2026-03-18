@@ -15,6 +15,7 @@ export const orders = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    type: varchar("type", { length: 20 }).notNull().default("checkout"),
     crossmintOrderId: varchar("crossmint_order_id", { length: 255 }).notNull(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },

@@ -8,6 +8,7 @@ import type {
 export interface OrderSummary {
   orderId: string
   crossmintOrderId: string
+  type: string
   phase: string
   lineItems: unknown[]
   payment: { status: string; currency: string }
@@ -18,6 +19,7 @@ export interface OrderSummary {
 export interface ListOrdersParams {
   page?: number
   limit?: number
+  type?: string
   phase?: string
   status?: string
 }

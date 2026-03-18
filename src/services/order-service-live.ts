@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect"
-import { eq, desc, sql } from "drizzle-orm"
+import { eq, desc, sql, and } from "drizzle-orm"
 import { db } from "../db/client.js"
 import { orders } from "../db/schema/orders.js"
 import {
@@ -15,6 +15,7 @@ const dbError = (cause: unknown) => new DatabaseError({ cause })
 function mapCrossmintOrder(
   localOrderId: string,
   crossmintOrderId: string,
+  orderType: string,
   crossmintOrder: {
     phase: string
     lineItems?: unknown[]
@@ -26,6 +27,7 @@ function mapCrossmintOrder(
   return {
     orderId: localOrderId,
     crossmintOrderId,
+    type: orderType,
     phase: crossmintOrder.phase,
     lineItems: crossmintOrder.lineItems ?? [],
     payment: {
@@ -46,13 +48,18 @@ const impl: OrderServiceShape = {
       const limit = Math.min(100, Math.max(1, params?.limit ?? 20))
       const offset = (page - 1) * limit
 
-      // Count total orders for this user
+      // Build where clause — filter by type in DB (it's a local column)
+      const whereConditions = params?.type
+        ? and(eq(orders.userId, userId), eq(orders.type, params.type))
+        : eq(orders.userId, userId)
+
+      // Count total orders matching filters
       const totalRows = yield* Effect.tryPromise({
         try: () =>
           db
             .select({ count: sql<number>`count(*)::int` })
             .from(orders)
-            .where(eq(orders.userId, userId))
+            .where(whereConditions)
             .then((rows) => rows[0]?.count ?? 0),
         catch: dbError,
       })
@@ -63,7 +70,7 @@ const impl: OrderServiceShape = {
           db
             .select()
             .from(orders)
-            .where(eq(orders.userId, userId))
+            .where(whereConditions)
             .orderBy(desc(orders.createdAt))
             .limit(limit)
             .offset(offset),
@@ -82,6 +89,7 @@ const impl: OrderServiceShape = {
             mapCrossmintOrder(
               local.id,
               local.crossmintOrderId,
+              local.type,
               crossmintOrder,
               local.createdAt.toISOString()
             )
@@ -90,6 +98,7 @@ const impl: OrderServiceShape = {
           results.push({
             orderId: local.id,
             crossmintOrderId: local.crossmintOrderId,
+            type: local.type,
             phase: "unknown",
             lineItems: [],
             payment: { status: "unknown", currency: "usdc" },
@@ -131,6 +140,7 @@ const impl: OrderServiceShape = {
       return mapCrossmintOrder(
         local.id,
         local.crossmintOrderId,
+        local.type,
         crossmintOrder,
         local.createdAt.toISOString()
       )

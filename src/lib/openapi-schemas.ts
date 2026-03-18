@@ -188,6 +188,7 @@ export const OrderSummarySchema = z
   .object({
     orderId: z.string().uuid().openapi({ example: "d1e2f3a4-b5c6-7890-defg-234567890123" }),
     crossmintOrderId: z.string().openapi({ example: "ed34a579-7fbc-4509-b8d8-9e61954cd555" }),
+    type: z.string().openapi({ example: "checkout" }),
     phase: z.string().openapi({ example: "completed" }),
     lineItems: z.array(z.unknown()),
     payment: z.object({
@@ -220,6 +221,7 @@ export const OrderListSchema = z
 export const OrderListQuerySchema = z.object({
   page: z.string().optional().openapi({ example: "1", param: { name: "page", in: "query" } }),
   limit: z.string().optional().openapi({ example: "20", param: { name: "limit", in: "query" } }),
+  type: z.string().optional().openapi({ example: "checkout", param: { name: "type", in: "query" } }),
   phase: z.string().optional().openapi({ example: "completed", param: { name: "phase", in: "query" } }),
   status: z.string().optional().openapi({ example: "completed", param: { name: "status", in: "query" } }),
 })

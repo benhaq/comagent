@@ -78,6 +78,7 @@ export function createOrderRoutes(layer: Layer.Layer<OrderService>) {
     const params = {
       page: query.page ? parseInt(query.page, 10) : undefined,
       limit: query.limit ? parseInt(query.limit, 10) : undefined,
+      type: query.type || undefined,
       phase: query.phase || undefined,
       status: query.status || undefined,
     }

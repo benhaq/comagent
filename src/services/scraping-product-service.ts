@@ -144,11 +144,12 @@ function makeScrapingImpl(cache: {
 
       // Client-side filtering — scraping API filters are unreliable
       // Guard against falsy/zero values the LLM sends as defaults
+      // Products with unknown price (0) are kept — better to show them than hide matches
       if (params.minPrice != null && params.minPrice > 0) {
-        products = products.filter((p) => p.price > 0 && p.price >= params.minPrice! * 100);
+        products = products.filter((p) => p.price === 0 || p.price >= params.minPrice! * 100);
       }
       if (params.maxPrice != null && params.maxPrice > 0) {
-        products = products.filter((p) => p.price > 0 && p.price <= params.maxPrice! * 100);
+        products = products.filter((p) => p.price === 0 || p.price <= params.maxPrice! * 100);
       }
       if (params.brand && params.brand.trim()) {
         const b = params.brand.toLowerCase().trim();

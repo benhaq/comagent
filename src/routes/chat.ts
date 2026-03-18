@@ -21,12 +21,26 @@ import {
 
 let msgCounter = 0
 function toUIMessage(role: string, content: unknown): UIMessage {
-  // If content is an array of UIMessage parts (e.g. tool-invocation), use directly
+  // If content is an array of UIMessage parts, convert to v6 format if needed
   if (Array.isArray(content) && content.length > 0 && content[0]?.type) {
+    const parts = content.map((p: any) => {
+      // Convert v5 "tool-invocation" format to v6 "tool-{toolName}" format
+      if (p.type === "tool-invocation" && p.toolInvocation) {
+        const ti = p.toolInvocation
+        return {
+          type: `tool-${ti.toolName}`,
+          toolCallId: ti.toolCallId,
+          state: ti.state === "result" ? "output-available" : ti.state,
+          input: ti.args ?? {},
+          output: ti.result ?? null,
+        }
+      }
+      return p
+    })
     return {
       id: `msg-${++msgCounter}`,
       role: role as UIMessage["role"],
-      parts: content,
+      parts,
     }
   }
   return {
@@ -178,7 +192,9 @@ export function createChatRoute(
             toUIMessage(lastMsg.role as string, lastMsg.content),
           ]
         : messages.map((m) => toUIMessage(m.role as string, m.content));
-    const modelMessages = await convertToModelMessages(uiMessages);
+    const modelMessages = await convertToModelMessages(uiMessages, {
+      ignoreIncompleteToolCalls: true,
+    });
 
     // ------------------------------------------------------------------
     // Stream LLM response
@@ -217,14 +233,11 @@ export function createChatRoute(
         if (toolCalls.length > 0) {
           try {
             const parts = toolCalls.map((tc: any, i: number) => ({
-              type: "tool-invocation",
-              toolInvocation: {
-                toolCallId: tc.toolCallId,
-                toolName: tc.toolName,
-                args: tc.args,
-                state: "result",
-                result: (toolResults[i] as any)?.result ?? null,
-              },
+              type: `tool-${tc.toolName}`,
+              toolCallId: tc.toolCallId,
+              state: "output-available",
+              input: tc.args ?? {},
+              output: (toolResults[i] as any)?.result ?? null,
             }))
             await Effect.runPromise(
               ChatSessionService.pipe(

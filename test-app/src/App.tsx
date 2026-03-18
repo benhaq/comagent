@@ -1,6 +1,6 @@
 // test-app/src/App.tsx
 import { useState, useRef, useCallback, useEffect } from "react"
-import { CrossmintProvider, CrossmintAuthProvider, CrossmintWalletProvider } from "@crossmint/client-sdk-react-ui"
+import { CrossmintProvider, CrossmintWalletProvider } from "@crossmint/client-sdk-react-ui"
 import { Renderer, JSONUIProvider } from "@json-render/react"
 import { buildProductGridSpec, buildProductDetailSpec } from "@backend/lib/product-spec-builders"
 import type { ProductSearchResult, ProductDetail } from "@backend/types/product"
@@ -214,8 +214,7 @@ export function App() {
 
   return (
     <CrossmintProvider apiKey={CROSSMINT_CLIENT_API_KEY}>
-      <CrossmintAuthProvider>
-        <CrossmintWalletProvider createOnLogin={{ chain: "base-sepolia", signer: { type: "email" } }}>
+      <CrossmintWalletProvider>
           {!loggedIn ? (
             <div style={{
               display: "flex", flexDirection: "column", height: "100vh",
@@ -352,8 +351,7 @@ export function App() {
               </div>
             </div>
           )}
-        </CrossmintWalletProvider>
-      </CrossmintAuthProvider>
+      </CrossmintWalletProvider>
     </CrossmintProvider>
   )
 }

@@ -1,5 +1,4 @@
-import { useState, useCallback } from "react"
-import { useCrossmintAuth } from "@crossmint/client-sdk-react-ui"
+import { useState } from "react"
 import { CROSSMINT_CLIENT_API_KEY, CROSSMINT_AUTH_URL } from "../lib/crossmint-config"
 
 interface LoginPanelProps {
@@ -9,48 +8,77 @@ interface LoginPanelProps {
 type Step = "email" | "otp" | "loading"
 
 export function LoginPanel({ onLoggedIn }: LoginPanelProps) {
-  const { crossmintAuth, createAuthSession } = useCrossmintAuth()
   const [step, setStep] = useState<Step>("email")
   const [email, setEmail] = useState("")
   const [otp, setOtp] = useState("")
   const [emailId, setEmailId] = useState("")
   const [error, setError] = useState<string | null>(null)
 
-  const sendOtp = useCallback(async () => {
+  const sendOtp = async () => {
     if (!email.trim()) return
     setError(null)
     setStep("loading")
+
     try {
-      const res = await crossmintAuth!.sendEmailOtp(email.trim())
-      setEmailId(res.emailId)
+      const res = await fetch(`${CROSSMINT_AUTH_URL}/otps/send`, {
+        method: "POST",
+        headers: {
+          "x-api-key": CROSSMINT_CLIENT_API_KEY,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ email: email.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.message ?? `OTP send failed (${res.status})`)
+        setStep("email")
+        return
+      }
+      setEmailId(data.emailId)
       setStep("otp")
     } catch (err: any) {
-      setError(err.message ?? "Failed to send OTP")
+      setError(err.message)
       setStep("email")
     }
-  }, [email, crossmintAuth])
+  }
 
-  const verifyOtp = useCallback(async () => {
+  const verifyOtp = async () => {
     if (!otp.trim()) return
     setError(null)
     setStep("loading")
+
     try {
-      // 1. Confirm OTP via SDK — get oneTimeSecret
-      const oneTimeSecret = await crossmintAuth!.confirmEmailOtp(email.trim(), emailId, otp.trim())
+      // 1. Authenticate with OTP
+      const params = new URLSearchParams({
+        email,
+        signinAuthenticationMethod: "email",
+        token: otp.trim(),
+        locale: "en",
+        state: emailId,
+        callbackUrl: `${CROSSMINT_AUTH_URL}/callback`,
+      })
+      const authRes = await fetch(`${CROSSMINT_AUTH_URL}/authenticate?${params}`, {
+        method: "POST",
+        headers: {
+          "x-api-key": CROSSMINT_CLIENT_API_KEY,
+          "content-type": "application/json",
+        },
+      })
+      const authData = await authRes.json()
+      if (!authRes.ok || !authData.oneTimeSecret) {
+        setError(authData.message ?? "OTP verification failed")
+        setStep("otp")
+        return
+      }
 
-      // 2. Initialize SDK wallet session
-      await createAuthSession(oneTimeSecret)
-
-      // 3. Exchange oneTimeSecret for JWT via raw API call.
-      //    SDK doesn't expose JWT directly after createAuthSession —
-      //    backend POST /api/auth/session requires jwt field for session cookie.
+      // 2. Exchange oneTimeSecret for JWT
       const refreshRes = await fetch(`${CROSSMINT_AUTH_URL}/refresh`, {
         method: "POST",
         headers: {
           "x-api-key": CROSSMINT_CLIENT_API_KEY,
           "content-type": "application/json",
         },
-        body: JSON.stringify({ refresh: oneTimeSecret }),
+        body: JSON.stringify({ refresh: authData.oneTimeSecret }),
       })
       const refreshData = await refreshRes.json()
       if (!refreshRes.ok || !refreshData.jwt) {
@@ -59,7 +87,7 @@ export function LoginPanel({ onLoggedIn }: LoginPanelProps) {
         return
       }
 
-      // 4. Send JWT to backend to set httpOnly cookie session
+      // 3. Send JWT to backend to set httpOnly cookie session
       const sessionRes = await fetch("/api/auth/session", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -70,18 +98,18 @@ export function LoginPanel({ onLoggedIn }: LoginPanelProps) {
         }),
       })
       if (!sessionRes.ok) {
-        const data = await sessionRes.json().catch(() => null)
-        setError(data?.error ?? `Session setup failed (${sessionRes.status})`)
+        const sessionData = await sessionRes.json().catch(() => null)
+        setError(sessionData?.error ?? `Session setup failed (${sessionRes.status})`)
         setStep("otp")
         return
       }
 
       onLoggedIn(email.trim())
     } catch (err: any) {
-      setError(err.message ?? "OTP verification failed")
+      setError(err.message)
       setStep("otp")
     }
-  }, [otp, email, emailId, crossmintAuth, createAuthSession, onLoggedIn])
+  }
 
   return (
     <div style={{

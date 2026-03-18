@@ -80,7 +80,7 @@ export const createCrossmintOrder = (
         payment: {
           receiptEmail: params.email,
           method: "base-sepolia",
-          currency: "credit",
+          currency: "usdxm",
           payerAddress: params.payerAddress,
         },
         lineItems: params.lineItems,

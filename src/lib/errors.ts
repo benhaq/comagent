@@ -175,7 +175,13 @@ export class CheckoutOrderCreationError extends Data.TaggedError("CheckoutOrderC
   cause?: unknown
 }> {
   get message() {
-    return "Failed to create Crossmint order"
+    const msg =
+      this.cause instanceof Error
+        ? this.cause.message
+        : typeof this.cause === "string"
+          ? this.cause
+          : undefined
+    return msg || "Failed to create Crossmint order"
   }
 }
 

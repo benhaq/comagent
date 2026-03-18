@@ -22,6 +22,7 @@ const migrationClient = postgres(DATABASE_URL_DIRECT, { max: 1 })
 
 export const db = drizzle(queryClient, {
   schema: { ...chatSessionsSchema, ...chatMessagesSchema, ...usersSchema, ...relationsSchema, ...cartItemsSchema, ...ordersSchema },
+  logger: true,
 })
 
 export const migrationDb = drizzle(migrationClient)

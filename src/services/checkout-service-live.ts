@@ -19,7 +19,10 @@ import { CheckoutService } from "./checkout-service.js"
 import type { CheckoutServiceShape } from "./checkout-service.js"
 import logger from "../lib/logger.js"
 
-const dbError = (cause: unknown) => new DatabaseError({ cause })
+const dbError = (cause: unknown) => {
+  logger.error({ cause }, "Checkout DB operation failed")
+  return new DatabaseError({ cause })
+}
 
 const impl: CheckoutServiceShape = {
   checkout: (userId, cartItemId) =>

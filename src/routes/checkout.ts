@@ -21,6 +21,7 @@ function checkoutErrorToStatus(tag: string): 400 | 404 | 422 | 502 | 500 {
   if (tag === "CheckoutMissingAddressError") return 400
   if (tag === "InsufficientFundsError") return 422
   if (tag === "CheckoutOrderCreationError") return 502
+  if (tag === "CheckoutPaymentError") return 502
   return 500
 }
 

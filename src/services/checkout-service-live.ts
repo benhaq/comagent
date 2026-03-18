@@ -13,6 +13,7 @@ import {
 } from "../lib/errors.js"
 import {
   createCrossmintOrder,
+  createWalletTransaction,
 } from "../lib/crossmint-client.js"
 import { CheckoutService } from "./checkout-service.js"
 import type { CheckoutServiceShape } from "./checkout-service.js"
@@ -88,12 +89,14 @@ const impl: CheckoutServiceShape = {
         return yield* Effect.fail(new InsufficientFundsError({ orderId: crossmintOrder.orderId }))
       }
 
-      // 7. Extract serialized transaction for frontend approval
+      // 7. Extract serialized transaction and create wallet tx (awaiting-approval)
       const serializedTx = crossmintOrder.payment.preparation?.serializedTransaction
       if (!serializedTx) {
         logger.error({ orderId: crossmintOrder.orderId, payment: crossmintOrder.payment }, "No serialized transaction in Crossmint response")
         return yield* Effect.fail(new InsufficientFundsError({ orderId: crossmintOrder.orderId }))
       }
+
+      const walletTx = yield* createWalletTransaction(user.walletAddress, serializedTx)
 
       // 8. Insert local order record
       const localOrder = yield* Effect.tryPromise({
@@ -127,7 +130,8 @@ const impl: CheckoutServiceShape = {
         orderId: localOrder.id,
         crossmintOrderId: crossmintOrder.orderId,
         phase: "awaiting-approval",
-        serializedTransaction: serializedTx,
+        transactionId: walletTx.id,
+        walletAddress: user.walletAddress,
       }
     }),
 }

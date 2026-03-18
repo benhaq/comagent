@@ -56,7 +56,8 @@ export interface CheckoutResponse {
   orderId: string
   crossmintOrderId: string
   phase: string
-  serializedTransaction: string
+  transactionId: string
+  walletAddress: string
 }
 
 export async function checkout(cartItemId: string): Promise<CheckoutResponse> {

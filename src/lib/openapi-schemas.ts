@@ -177,7 +177,8 @@ export const CheckoutResponseSchema = z
     orderId: z.string().uuid().openapi({ example: "d1e2f3a4-b5c6-7890-defg-234567890123" }),
     crossmintOrderId: z.string().openapi({ example: "ed34a579-7fbc-4509-b8d8-9e61954cd555" }),
     phase: z.string().openapi({ example: "awaiting-approval" }),
-    serializedTransaction: z.string().openapi({ example: "0x..." }),
+    transactionId: z.string().openapi({ example: "tx-uuid-123" }),
+    walletAddress: z.string().openapi({ example: "0xDeAdBeEf00000000000000000000000000000001" }),
   })
   .openapi("CheckoutResponse")
 

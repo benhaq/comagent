@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useWallet, EVMWallet } from "@crossmint/client-sdk-react-ui"
+import { useWallet } from "@crossmint/client-sdk-react-ui"
 import { checkout, getOrder, type CheckoutResponse, type OrderStatus } from "../lib/cart-api"
 
 type CheckoutStep = "preparing" | "approving" | "processing" | "completed" | "failed"
@@ -54,14 +54,18 @@ export function CheckoutView({ cartItemId, userEmail, onDone, onBack }: Checkout
     }, 60_000)
   }, [cleanup])
 
-  const ensureWallet = useCallback(async (): Promise<EVMWallet> => {
-    // Get or create the base wallet, then wrap as EVMWallet
-    const baseWallet = wallet ?? await getOrCreateWallet({
+  const ensureWallet = useCallback(async () => {
+    if (wallet) return wallet
+    return await getOrCreateWallet({
       chain: "base-sepolia",
       signer: { type: "email", email: userEmail },
     })
-    return EVMWallet.from(baseWallet)
   }, [wallet, getOrCreateWallet, userEmail])
+
+  const approveTransaction = useCallback(async (w: any, txId: string, walletAddr: string) => {
+    // SDK's wallet.approveTransactionAndWait handles email OTP dialog automatically
+    await w.approveTransactionAndWait(txId)
+  }, [])
 
   const handleCheckout = useCallback(async () => {
     setError(null)
@@ -71,16 +75,13 @@ export function CheckoutView({ cartItemId, userEmail, onDone, onBack }: Checkout
       // 1. Ensure wallet is initialized
       const w = await ensureWallet()
 
-      // 2. Create order on backend
+      // 2. Create order + wallet transaction on backend
       const data = await checkout(cartItemId)
       setOrderData(data)
 
-      // 3. Sign with wallet SDK (triggers email OTP)
+      // 3. Approve the pending transaction via SDK (triggers email OTP)
       setStep("approving")
-      await w.sendTransaction({
-        calls: [{ transaction: data.serializedTransaction }],
-        chain: "base-sepolia",
-      })
+      await approveTransaction(w, data.transactionId, data.walletAddress)
 
       // 4. Poll for completion
       startPolling(data.orderId)
@@ -88,7 +89,7 @@ export function CheckoutView({ cartItemId, userEmail, onDone, onBack }: Checkout
       setStep("failed")
       setError(err.message ?? "Checkout failed")
     }
-  }, [cartItemId, ensureWallet, startPolling])
+  }, [cartItemId, ensureWallet, approveTransaction, startPolling])
 
   // Auto-start checkout on mount — guard against StrictMode double-fire
   useEffect(() => {
@@ -153,10 +154,7 @@ export function CheckoutView({ cartItemId, userEmail, onDone, onBack }: Checkout
                     setStep("approving")
                     try {
                       const w = await ensureWallet()
-                      await w.sendTransaction({
-                        calls: [{ transaction: orderData.serializedTransaction }],
-                        chain: "base-sepolia",
-                      })
+                      await approveTransaction(w, orderData.transactionId, orderData.walletAddress)
                       startPolling(orderData.orderId)
                     } catch (err: any) {
                       setError(err.message)

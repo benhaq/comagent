@@ -1,6 +1,6 @@
 import { Effect } from "effect"
 import { env } from "./env.js"
-import { CheckoutOrderCreationError } from "./errors.js"
+import { CheckoutOrderCreationError, CheckoutPaymentError } from "./errors.js"
 import logger from "./logger.js"
 
 // ---------------------------------------------------------------------------
@@ -106,6 +106,53 @@ export const createCrossmintOrder = (
       return data as CrossmintOrderResponse
     },
     catch: (cause) => new CheckoutOrderCreationError({ cause }),
+  })
+
+// ---------------------------------------------------------------------------
+// Create wallet transaction via Wallets API (awaiting-approval for email signer)
+// ---------------------------------------------------------------------------
+
+export interface WalletTransactionResponse {
+  id: string
+  status: string
+  approvals?: { pending?: Array<{ message: string }> }
+}
+
+export const createWalletTransaction = (
+  walletAddress: string,
+  serializedTransaction: string,
+  chain: string = "base-sepolia"
+): Effect.Effect<WalletTransactionResponse, CheckoutPaymentError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const url = `${baseUrl()}/api/2022-06-09/wallets/${walletAddress}/transactions`
+      const body = {
+        params: {
+          calls: [{ transaction: serializedTransaction }],
+          chain,
+        },
+      }
+
+      logger.info({ walletAddress, chain }, "Creating wallet transaction (awaiting-approval)")
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30_000),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        logger.error({ status: res.status, data, walletAddress }, "Wallet transaction creation failed")
+        throw new Error(data?.message ?? `Transaction creation failed: ${res.status}`)
+      }
+
+      logger.info({ walletAddress, txId: data.id, status: data.status }, "Wallet transaction created")
+      return data as WalletTransactionResponse
+    },
+    catch: (cause) => new CheckoutPaymentError({ cause }),
   })
 
 // ---------------------------------------------------------------------------

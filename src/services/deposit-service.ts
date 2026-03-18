@@ -3,7 +3,7 @@ import type {
   DatabaseError,
   DepositDuplicateError,
   DepositFundingError,
-  CheckoutNoWalletError,
+  DepositUserNotFoundError,
 } from "../lib/errors.js"
 
 export interface DepositResult {
@@ -16,6 +16,7 @@ export interface DepositResult {
 export interface DepositServiceShape {
   confirmDeposit(
     userId: string,
+    address: string,
     amountPAS: string,
     transactionHash: string,
   ): Effect.Effect<
@@ -23,7 +24,7 @@ export interface DepositServiceShape {
     | DatabaseError
     | DepositDuplicateError
     | DepositFundingError
-    | CheckoutNoWalletError
+    | DepositUserNotFoundError
   >
 }
 

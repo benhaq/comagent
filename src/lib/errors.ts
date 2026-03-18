@@ -228,3 +228,15 @@ export class DepositFundingError extends Data.TaggedError("DepositFundingError")
     return "Failed to fund wallet"
   }
 }
+
+/**
+ * Raised when userId + walletAddress pair is not found in users table.
+ */
+export class DepositUserNotFoundError extends Data.TaggedError("DepositUserNotFoundError")<{
+  userId: string
+  address: string
+}> {
+  get message() {
+    return "User not found or address mismatch"
+  }
+}

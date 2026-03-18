@@ -53,59 +53,55 @@ const impl: OrderServiceShape = {
         ? and(eq(orders.userId, userId), eq(orders.type, params.type))
         : eq(orders.userId, userId)
 
-      // Count total orders matching filters
-      const totalRows = yield* Effect.tryPromise({
-        try: () =>
-          db
-            .select({ count: sql<number>`count(*)::int` })
-            .from(orders)
-            .where(whereConditions)
-            .then((rows) => rows[0]?.count ?? 0),
-        catch: dbError,
-      })
+      // Run COUNT and SELECT in parallel (no data dependency)
+      const [totalRows, localOrders] = yield* Effect.all([
+        Effect.tryPromise({
+          try: () =>
+            db
+              .select({ count: sql<number>`count(*)::int` })
+              .from(orders)
+              .where(whereConditions)
+              .then((rows) => rows[0]?.count ?? 0),
+          catch: dbError,
+        }),
+        Effect.tryPromise({
+          try: () =>
+            db
+              .select()
+              .from(orders)
+              .where(whereConditions)
+              .orderBy(desc(orders.createdAt))
+              .limit(limit)
+              .offset(offset),
+          catch: dbError,
+        }),
+      ], { concurrency: "unbounded" })
 
-      // Fetch paginated orders
-      const localOrders = yield* Effect.tryPromise({
-        try: () =>
-          db
-            .select()
-            .from(orders)
-            .where(whereConditions)
-            .orderBy(desc(orders.createdAt))
-            .limit(limit)
-            .offset(offset),
-        catch: dbError,
-      })
-
-      const results: OrderSummary[] = []
-
-      for (const local of localOrders) {
-        const crossmintOrder = yield* getCrossmintOrder(local.crossmintOrderId).pipe(
-          Effect.catchAll(() => Effect.succeed(null))
-        )
-
-        if (crossmintOrder) {
-          results.push(
-            mapCrossmintOrder(
-              local.id,
-              local.crossmintOrderId,
-              local.type,
-              crossmintOrder,
-              local.createdAt.toISOString()
-            )
+      // Fetch Crossmint order details in parallel (max 5 concurrent)
+      const results: OrderSummary[] = yield* Effect.all(
+        localOrders.map((local) =>
+          getCrossmintOrder(local.crossmintOrderId).pipe(
+            Effect.map((crossmintOrder) =>
+              mapCrossmintOrder(
+                local.id, local.crossmintOrderId, local.type,
+                crossmintOrder, local.createdAt.toISOString()
+              )
+            ),
+            Effect.catchAll(() =>
+              Effect.succeed({
+                orderId: local.id,
+                crossmintOrderId: local.crossmintOrderId,
+                type: local.type,
+                phase: "unknown",
+                lineItems: [],
+                payment: { status: "unknown", currency: "usdc" },
+                createdAt: local.createdAt.toISOString(),
+              } satisfies OrderSummary)
+            ),
           )
-        } else {
-          results.push({
-            orderId: local.id,
-            crossmintOrderId: local.crossmintOrderId,
-            type: local.type,
-            phase: "unknown",
-            lineItems: [],
-            payment: { status: "unknown", currency: "usdc" },
-            createdAt: local.createdAt.toISOString(),
-          })
-        }
-      }
+        ),
+        { concurrency: 5 },
+      )
 
       // Apply post-fetch filters (phase/status come from Crossmint, not DB)
       let filtered = results
@@ -116,7 +112,13 @@ const impl: OrderServiceShape = {
         filtered = filtered.filter((o) => o.payment.status === params.status)
       }
 
-      return { orders: filtered, total: totalRows, page, limit }
+      const hasPostFilters = !!(params?.phase || params?.status)
+      return {
+        orders: filtered,
+        total: hasPostFilters ? filtered.length : totalRows,
+        page,
+        limit,
+      }
     }),
 
   getOrder: (userId, orderId) =>

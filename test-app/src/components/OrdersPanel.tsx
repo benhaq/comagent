@@ -10,6 +10,7 @@ const LIMIT = 5
 export function OrdersPanel({ onClose }: OrdersPanelProps) {
   const [data, setData] = useState<OrderListResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [typeFilter, setTypeFilter] = useState("")
   const [phaseFilter, setPhaseFilter] = useState("")
@@ -17,6 +18,7 @@ export function OrdersPanel({ onClose }: OrdersPanelProps) {
 
   const load = useCallback(async () => {
     setLoading(true)
+    setLoadError(null)
     try {
       const res = await listOrders({
         page,
@@ -26,8 +28,8 @@ export function OrdersPanel({ onClose }: OrdersPanelProps) {
         status: statusFilter || undefined,
       })
       setData(res)
-    } catch {
-      // ignore
+    } catch (err: any) {
+      setLoadError(err.message ?? "Failed to load orders")
     } finally {
       setLoading(false)
     }
@@ -93,7 +95,13 @@ export function OrdersPanel({ onClose }: OrdersPanelProps) {
       {/* Orders list */}
       <div style={{ flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
         {loading && <div style={{ color: "#888", fontSize: 13, textAlign: "center", padding: 20 }}>Loading...</div>}
-        {!loading && data && data.orders.length === 0 && (
+        {!loading && loadError && (
+          <div style={{ textAlign: "center", padding: 20 }}>
+            <div style={{ color: "#f87171", fontSize: 13, marginBottom: 8 }}>{loadError}</div>
+            <button onClick={load} style={{ ...pageBtnStyle, fontSize: 11 }}>Retry</button>
+          </div>
+        )}
+        {!loading && !loadError && data && data.orders.length === 0 && (
           <div style={{ color: "#666", fontSize: 13, textAlign: "center", padding: 20 }}>No orders found</div>
         )}
         {!loading && data?.orders.map((order) => (

@@ -20,8 +20,10 @@ export function CheckoutView({ cartItemId, userEmail, onDone, onBack }: Checkout
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const startedRef = useRef(false)
+  const doneRef = useRef(false)
 
   const cleanup = useCallback(() => {
+    doneRef.current = true
     if (pollingRef.current) clearInterval(pollingRef.current)
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
   }, [])
@@ -29,10 +31,13 @@ export function CheckoutView({ cartItemId, userEmail, onDone, onBack }: Checkout
   useEffect(() => cleanup, [cleanup])
 
   const startPolling = useCallback((orderId: string) => {
+    doneRef.current = false
     setStep("processing")
     pollingRef.current = setInterval(async () => {
+      if (doneRef.current) return
       try {
         const status = await getOrder(orderId)
+        if (doneRef.current) return
         setOrderStatus(status)
         if (status.phase === "completed") {
           cleanup()
@@ -62,34 +67,31 @@ export function CheckoutView({ cartItemId, userEmail, onDone, onBack }: Checkout
     })
   }, [wallet, getOrCreateWallet, userEmail])
 
-  const approveTransaction = useCallback(async (w: any, txId: string, walletAddr: string) => {
-    // SDK's wallet.approveTransactionAndWait handles email OTP dialog automatically
-    await w.approveTransactionAndWait(txId)
-  }, [])
+  const approveAndPoll = useCallback(async (txId: string, orderId: string) => {
+    setError(null)
+    setStep("approving")
+    try {
+      const w = await ensureWallet()
+      await w.approveTransactionAndWait(txId)
+      startPolling(orderId)
+    } catch (err: any) {
+      setStep("failed")
+      setError(err.message ?? "Approval failed")
+    }
+  }, [ensureWallet, startPolling])
 
   const handleCheckout = useCallback(async () => {
     setError(null)
     setStep("preparing")
-
     try {
-      // 1. Ensure wallet is initialized
-      const w = await ensureWallet()
-
-      // 2. Create order + wallet transaction on backend
       const data = await checkout(cartItemId)
       setOrderData(data)
-
-      // 3. Approve the pending transaction via SDK (triggers email OTP)
-      setStep("approving")
-      await approveTransaction(w, data.transactionId, data.walletAddress)
-
-      // 4. Poll for completion
-      startPolling(data.orderId)
+      await approveAndPoll(data.transactionId, data.orderId)
     } catch (err: any) {
       setStep("failed")
       setError(err.message ?? "Checkout failed")
     }
-  }, [cartItemId, ensureWallet, approveTransaction, startPolling])
+  }, [cartItemId, approveAndPoll])
 
   // Auto-start checkout on mount — guard against StrictMode double-fire
   useEffect(() => {
@@ -149,18 +151,7 @@ export function CheckoutView({ cartItemId, userEmail, onDone, onBack }: Checkout
             <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
               {orderData && (
                 <button
-                  onClick={async () => {
-                    setError(null)
-                    setStep("approving")
-                    try {
-                      const w = await ensureWallet()
-                      await approveTransaction(w, orderData.transactionId, orderData.walletAddress)
-                      startPolling(orderData.orderId)
-                    } catch (err: any) {
-                      setError(err.message)
-                      setStep("failed")
-                    }
-                  }}
+                  onClick={() => approveAndPoll(orderData.transactionId, orderData.orderId)}
                   style={btnStyle}
                 >
                   Retry Approval

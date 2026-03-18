@@ -6,7 +6,7 @@ import { webhookAuth } from "../middleware/webhook-auth.js"
 import {
   DepositConfirmRequestSchema,
   DepositConfirmResponseSchema,
-  UserIdParamSchema,
+  DepositParamsSchema,
   errorResponse,
   validationHook,
 } from "../lib/openapi-schemas.js"
@@ -15,9 +15,8 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function depositErrorToStatus(tag: string): 400 | 404 | 409 | 502 | 500 {
-  if (tag === "CheckoutNoWalletError") return 400
-  if (tag === "DatabaseError") return 404
+function depositErrorToStatus(tag: string): 404 | 409 | 502 | 500 {
+  if (tag === "DepositUserNotFoundError") return 404
   if (tag === "DepositDuplicateError") return 409
   if (tag === "DepositFundingError") return 502
   return 500
@@ -31,12 +30,12 @@ const security = [{ WebhookSecret: [] }]
 
 const confirmDepositRoute = createRoute({
   method: "post",
-  path: "/{userId}/confirm",
+  path: "/{userId}/{address}/confirm",
   tags: ["Deposit"],
   security,
   summary: "Confirm PAS deposit and fund user wallet with USDC",
   request: {
-    params: UserIdParamSchema,
+    params: DepositParamsSchema,
     body: {
       content: { "application/json": { schema: DepositConfirmRequestSchema } },
       required: true,
@@ -47,8 +46,8 @@ const confirmDepositRoute = createRoute({
       content: { "application/json": { schema: DepositConfirmResponseSchema } },
       description: "Deposit confirmed and wallet funded",
     },
-    ...errorResponse(400, "User has no wallet"),
     ...errorResponse(401, "Unauthorized — invalid webhook secret"),
+    ...errorResponse(404, "User not found or address mismatch"),
     ...errorResponse(409, "Duplicate transaction hash"),
     ...errorResponse(502, "Crossmint funding failed"),
     ...errorResponse(500, "Internal server error"),
@@ -76,11 +75,11 @@ export function createDepositRoutes(layer: Layer.Layer<DepositService>) {
   })
 
   app.openapi(confirmDepositRoute, async (c) => {
-    const { userId } = c.req.valid("param")
+    const { userId, address } = c.req.valid("param")
     const { amountPAS, transactionHash } = c.req.valid("json")
     const result = await runService(
       DepositService.pipe(
-        Effect.flatMap((s) => s.confirmDeposit(userId, String(amountPAS), transactionHash)),
+        Effect.flatMap((s) => s.confirmDeposit(userId, address, String(amountPAS), transactionHash)),
         Effect.provide(layer),
       ),
     )

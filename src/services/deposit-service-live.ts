@@ -1,13 +1,13 @@
 import { Effect, Layer } from "effect"
 import BigNumber from "bignumber.js"
-import { eq } from "drizzle-orm"
+import { eq, and } from "drizzle-orm"
 import { db } from "../db/client.js"
 import { users } from "../db/schema/users.js"
 import { orders } from "../db/schema/orders.js"
 import {
   DatabaseError,
   DepositDuplicateError,
-  CheckoutNoWalletError,
+  DepositUserNotFoundError,
 } from "../lib/errors.js"
 import { fundCrossmintWallet } from "../lib/crossmint-client.js"
 import { env } from "../lib/env.js"
@@ -18,7 +18,7 @@ import logger from "../lib/logger.js"
 const dbError = (cause: unknown) => new DatabaseError({ cause })
 
 const impl: DepositServiceShape = {
-  confirmDeposit: (userId, amountPAS, transactionHash) =>
+  confirmDeposit: (userId, address, amountPAS, transactionHash) =>
     Effect.gen(function* () {
       // 1. Fetch user
       const user = yield* Effect.tryPromise({
@@ -26,21 +26,16 @@ const impl: DepositServiceShape = {
           db
             .select()
             .from(users)
-            .where(eq(users.id, userId))
+            .where(and(eq(users.id, userId), eq(users.walletAddress, address)))
             .then((rows) => rows[0] ?? null),
         catch: dbError,
       })
 
       if (!user) {
-        return yield* Effect.fail(new DatabaseError({ cause: "User not found" }))
+        return yield* Effect.fail(new DepositUserNotFoundError({ userId, address }))
       }
 
-      // 2. Guard: wallet must exist (deposit uses email locator, only walletAddress needed)
-      if (!user.walletAddress) {
-        return yield* Effect.fail(new CheckoutNoWalletError({ userId }))
-      }
-
-      // 3. Convert PAS planck → USDC ether using BigNumber
+      // 2. Convert PAS planck → USDC ether using BigNumber
       //    PAS has 10 decimals (planck), USDC has 6 decimals (micro)
       //    amountPAS is raw planck string, e.g. "1000000000000" = 100 PAS
       const PAS_DECIMALS = 10
@@ -52,11 +47,11 @@ const impl: DepositServiceShape = {
       const amountPasStr = pasHuman.toFixed(PAS_DECIMALS)
       const amountUsdcStr = usdcHuman.toFixed(USDC_DECIMALS)
 
-      // 4. Fund wallet via Crossmint staging faucet (expects ether form, not wei)
-      const walletLocator = `email:${user.email}:evm`
+      // 3. Fund wallet via Crossmint staging faucet (expects ether form, not wei)
+      const walletLocator = `email:${user.email}:evm-smart-wallet`
       yield* fundCrossmintWallet(walletLocator, usdcEther)
 
-      // 5. Insert deposit order record (unique constraint on polkadot_tx_hash guards duplicates)
+      // 4. Insert deposit order record (unique constraint on polkadot_tx_hash guards duplicates)
       const depositOrder = yield* Effect.tryPromise({
         try: () =>
           db

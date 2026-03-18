@@ -242,6 +242,18 @@ export const UserIdParamSchema = z.object({
   }),
 })
 
+export const DepositParamsSchema = z.object({
+  userId: z.string().uuid().openapi({
+    param: { name: "userId", in: "path" },
+    example: "f0e1d2c3-b4a5-6789-0abc-def123456789",
+  }),
+  address: z.string().regex(/^0x[0-9a-fA-F]{40}$/).openapi({
+    param: { name: "address", in: "path" },
+    example: "0x1234567890abcdef1234567890abcdef12345678",
+    description: "User EVM wallet address",
+  }),
+})
+
 export const DepositConfirmRequestSchema = z
   .object({
     amountPAS: z.number().positive().openapi({ example: 100 }),

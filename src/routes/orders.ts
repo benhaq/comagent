@@ -6,6 +6,7 @@ import { runService } from "../lib/effect-utils.js"
 import {
   OrderSummarySchema,
   OrderListSchema,
+  OrderListQuerySchema,
   OrderIdParamSchema,
   commonErrors,
   errorResponse,
@@ -33,11 +34,12 @@ const listOrdersRoute = createRoute({
   path: "/",
   tags: ["Orders"],
   security,
-  summary: "List user's orders",
+  summary: "List user's orders with optional filters and pagination",
+  request: { query: OrderListQuerySchema },
   responses: {
     200: {
       content: { "application/json": { schema: OrderListSchema } },
-      description: "User's order history",
+      description: "Paginated order list",
     },
     ...commonErrors,
   },
@@ -72,9 +74,16 @@ export function createOrderRoutes(layer: Layer.Layer<OrderService>) {
 
   app.openapi(listOrdersRoute, async (c) => {
     const userId = c.get("userId")
+    const query = c.req.valid("query")
+    const params = {
+      page: query.page ? parseInt(query.page, 10) : undefined,
+      limit: query.limit ? parseInt(query.limit, 10) : undefined,
+      phase: query.phase || undefined,
+      status: query.status || undefined,
+    }
     const result = await runService(
       OrderService.pipe(
-        Effect.flatMap((s) => s.listOrders(userId)),
+        Effect.flatMap((s) => s.listOrders(userId, params)),
         Effect.provide(layer),
       ),
     )
@@ -85,7 +94,7 @@ export function createOrderRoutes(layer: Layer.Layer<OrderService>) {
         orderErrorToStatus(err._tag),
       ) as never
     }
-    return c.json({ orders: result.right } as any, 200)
+    return c.json(result.right as any, 200)
   })
 
   app.openapi(getOrderRoute, async (c) => {

@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect"
-import { eq, desc } from "drizzle-orm"
+import { eq, desc, sql } from "drizzle-orm"
 import { db } from "../db/client.js"
 import { orders } from "../db/schema/orders.js"
 import {
@@ -8,7 +8,7 @@ import {
 } from "../lib/errors.js"
 import { getCrossmintOrder } from "../lib/crossmint-client.js"
 import { OrderService } from "./order-service.js"
-import type { OrderServiceShape, OrderSummary } from "./order-service.js"
+import type { OrderServiceShape, OrderSummary, ListOrdersParams } from "./order-service.js"
 
 const dbError = (cause: unknown) => new DatabaseError({ cause })
 
@@ -40,15 +40,33 @@ function mapCrossmintOrder(
 }
 
 const impl: OrderServiceShape = {
-  listOrders: (userId) =>
+  listOrders: (userId, params?: ListOrdersParams) =>
     Effect.gen(function* () {
+      const page = Math.max(1, params?.page ?? 1)
+      const limit = Math.min(100, Math.max(1, params?.limit ?? 20))
+      const offset = (page - 1) * limit
+
+      // Count total orders for this user
+      const totalRows = yield* Effect.tryPromise({
+        try: () =>
+          db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(orders)
+            .where(eq(orders.userId, userId))
+            .then((rows) => rows[0]?.count ?? 0),
+        catch: dbError,
+      })
+
+      // Fetch paginated orders
       const localOrders = yield* Effect.tryPromise({
         try: () =>
           db
             .select()
             .from(orders)
             .where(eq(orders.userId, userId))
-            .orderBy(desc(orders.createdAt)),
+            .orderBy(desc(orders.createdAt))
+            .limit(limit)
+            .offset(offset),
         catch: dbError,
       })
 
@@ -69,7 +87,6 @@ const impl: OrderServiceShape = {
             )
           )
         } else {
-          // Crossmint fetch failed — return minimal local data
           results.push({
             orderId: local.id,
             crossmintOrderId: local.crossmintOrderId,
@@ -81,7 +98,16 @@ const impl: OrderServiceShape = {
         }
       }
 
-      return results
+      // Apply post-fetch filters (phase/status come from Crossmint, not DB)
+      let filtered = results
+      if (params?.phase) {
+        filtered = filtered.filter((o) => o.phase === params.phase)
+      }
+      if (params?.status) {
+        filtered = filtered.filter((o) => o.payment.status === params.status)
+      }
+
+      return { orders: filtered, total: totalRows, page, limit }
     }),
 
   getOrder: (userId, orderId) =>

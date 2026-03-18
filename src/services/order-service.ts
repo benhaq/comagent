@@ -15,9 +15,23 @@ export interface OrderSummary {
   createdAt: string
 }
 
+export interface ListOrdersParams {
+  page?: number
+  limit?: number
+  phase?: string
+  status?: string
+}
+
+export interface PaginatedOrders {
+  orders: OrderSummary[]
+  total: number
+  page: number
+  limit: number
+}
+
 export interface OrderServiceShape {
-  listOrders(userId: string): Effect.Effect<
-    OrderSummary[],
+  listOrders(userId: string, params?: ListOrdersParams): Effect.Effect<
+    PaginatedOrders,
     DatabaseError | CheckoutOrderCreationError
   >
 

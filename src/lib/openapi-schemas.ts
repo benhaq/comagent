@@ -211,8 +211,18 @@ export const OrderSummarySchema = z
 export const OrderListSchema = z
   .object({
     orders: z.array(OrderSummarySchema),
+    total: z.number().int().openapi({ example: 10 }),
+    page: z.number().int().openapi({ example: 1 }),
+    limit: z.number().int().openapi({ example: 20 }),
   })
   .openapi("OrderList")
+
+export const OrderListQuerySchema = z.object({
+  page: z.string().optional().openapi({ example: "1", param: { name: "page", in: "query" } }),
+  limit: z.string().optional().openapi({ example: "20", param: { name: "limit", in: "query" } }),
+  phase: z.string().optional().openapi({ example: "completed", param: { name: "phase", in: "query" } }),
+  status: z.string().optional().openapi({ example: "completed", param: { name: "status", in: "query" } }),
+})
 
 export const OrderIdParamSchema = z.object({
   orderId: z.string().uuid().openapi({

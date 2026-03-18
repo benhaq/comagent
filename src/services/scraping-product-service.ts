@@ -28,13 +28,22 @@ const RETRY_SCHEDULE = Schedule.exponential("2 seconds").pipe(
 // Mapper: ScrapingProduct → ProductCard
 // ---------------------------------------------------------------------------
 
+/** Normalise a dollar price that may arrive in cents from the scraping API. */
+function sanitizePrice(raw: number | null | undefined): number {
+  if (raw == null) return 0;
+  // Apify sometimes returns price in cents (e.g. 841337 instead of 20.99).
+  // Amazon products rarely exceed $10 000, so treat values > 10 000 as cents.
+  const dollars = raw > 10_000 ? raw / 100 : raw;
+  return Math.round(dollars * 100); // → store as integer cents
+}
+
 function toProductCard(sp: ScrapingProduct): ProductCard {
   return {
     id: sp.asin,
     name: sp.title,
     image: sp.images[0] ?? "",
     images: sp.images,
-    price: sp.price != null ? Math.round(sp.price * 100) : 0,
+    price: sanitizePrice(sp.price),
     currency: "USD",
     sizes: [],
     colors: [],
@@ -88,9 +97,10 @@ function makeScrapingImpl(cache: {
         // Pass query, brand, maxPrice, pagination to scraping API
         // minPrice/category/rating filters are unreliable server-side — applied client-side instead
         const qs = new URLSearchParams({ q: params.query });
-        if (params.limit != null) qs.set("limit", String(Math.min(params.limit * 3, 20))); // fetch extra to compensate for client-side filtering
+        if (params.limit != null) qs.set("limit", String(params.limit));
         if (params.page != null && params.page > 1) qs.set("page", String(params.page));
         if (params.brand) qs.set("brand", params.brand);
+        if (params.minPrice != null && params.minPrice > 0) qs.set("minPrice", String(params.minPrice));
         if (params.maxPrice != null) qs.set("maxPrice", String(params.maxPrice));
         const url = `${baseUrl}/api/search/realtime?${qs.toString()}`;
         const res = await fetch(url, {
@@ -98,7 +108,9 @@ function makeScrapingImpl(cache: {
         });
         if (!res.ok)
           throw new Error(`Scraping API ${res.status}: ${res.statusText}`);
-        return (await res.json()) as ScrapingSearchResponse;
+        const body = await res.json();
+        // API may return { success, code, data: { products, ... } } or flat { products, ... }
+        return (body.data ?? body) as ScrapingSearchResponse;
       },
       catch: (cause) => new ScrapingServiceUnavailable({ cause }),
     }).pipe(Effect.retry(RETRY_SCHEDULE));
@@ -130,12 +142,24 @@ function makeScrapingImpl(cache: {
       const data = yield* fetchSearch(searchParams);
       let products = data.products.map(toProductCard);
 
-      // Client-side price filtering (scraping backend filters are unreliable)
+      // Client-side filtering — scraping API filters are unreliable
+      // Guard against falsy/zero values the LLM sends as defaults
       if (params.minPrice != null && params.minPrice > 0) {
-        products = products.filter((p) => p.price >= params.minPrice! * 100);
+        products = products.filter((p) => p.price > 0 && p.price >= params.minPrice! * 100);
       }
-      if (params.maxPrice != null) {
-        products = products.filter((p) => p.price <= params.maxPrice! * 100);
+      if (params.maxPrice != null && params.maxPrice > 0) {
+        products = products.filter((p) => p.price > 0 && p.price <= params.maxPrice! * 100);
+      }
+      if (params.brand && params.brand.trim()) {
+        const b = params.brand.toLowerCase().trim();
+        products = products.filter((p) => p.brand?.toLowerCase().includes(b));
+      }
+      if (params.minRating != null && params.minRating > 0) {
+        products = products.filter((p) => p.rating != null && p.rating >= params.minRating!);
+      }
+      if (params.category && params.category.trim()) {
+        const c = params.category.toLowerCase().trim();
+        products = products.filter((p) => p.category?.toLowerCase().includes(c));
       }
       products = products.slice(0, params.limit ?? 5);
 

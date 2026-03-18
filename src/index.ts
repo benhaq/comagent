@@ -21,6 +21,8 @@ import { createOrderRoutes } from "./routes/orders.js";
 import { OrderServiceLive } from "./services/order-service-live.js";
 import { createCartRoutes } from "./routes/cart.js";
 import { CartServiceLive } from "./services/cart-service-live.js";
+import { createDepositRoutes } from "./routes/deposit.js";
+import { DepositServiceLive } from "./services/deposit-service-live.js";
 
 const productServiceLayer =
   env.PRODUCT_SERVICE === "scraping"
@@ -123,8 +125,10 @@ app.get("/test", async (c) => {
 });
 
 // Auth middleware for all protected routes (skip /api/auth/session — it's public)
+// Deposit webhook uses its own webhook-secret auth, not Crossmint JWT
 app.use("/api/*", async (c, next) => {
   if (c.req.path === "/api/auth/session" && c.req.method === "POST") return next();
+  if (c.req.path.startsWith("/api/deposit/")) return next();
   return (authMiddleware as any)(c, next);
 });
 
@@ -140,6 +144,9 @@ app.use("/api/sessions/*", onboardingGate);
 app.use("/api/checkout/*", onboardingGate);
 app.use("/api/orders/*", onboardingGate);
 app.use("/api/cart/*", onboardingGate);
+
+// Deposit webhook (uses its own webhook-secret auth, not JWT)
+app.route("/api/deposit", createDepositRoutes(DepositServiceLive));
 
 // Gated API routes
 app.route(

@@ -105,6 +105,7 @@ const impl: CheckoutServiceShape = {
             .insert(orders)
             .values({
               userId,
+              type: "checkout",
               crossmintOrderId: crossmintOrder.orderId,
             })
             .returning()

@@ -43,7 +43,8 @@ const impl: DepositServiceShape = {
       const pasHuman = new BigNumber(amountPAS).shiftedBy(-PAS_DECIMALS)
       const usdcHuman = pasHuman.multipliedBy(env.PAS_TO_USDC_RATE)
       // Ether form = human-readable decimal (what Crossmint staging faucet expects)
-      const usdcEther = usdcHuman.toNumber()
+      // Crossmint fund API caps at 100 USDXM per call
+      const usdcEther = Math.min(usdcHuman.toNumber(), 100)
       const amountPasStr = pasHuman.toFixed(PAS_DECIMALS)
       const amountUsdcStr = usdcHuman.toFixed(USDC_DECIMALS)
 

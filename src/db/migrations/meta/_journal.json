@@ -50,13 +50,6 @@
       "when": 1773829594806,
       "tag": "0006_strange_fabian_cortez",
       "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1773841841472,
-      "tag": "0007_moaning_rocket_racer",
-      "breakpoints": true
     }
   ]
 }

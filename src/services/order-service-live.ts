@@ -84,7 +84,7 @@ const impl: OrderServiceShape = {
           if (!local.crossmintOrderId) {
             return Effect.succeed({
               orderId: local.id,
-              crossmintOrderId: local.crossmintOrderId ?? "",
+              crossmintOrderId: "",
               type: local.type,
               phase: "funded",
               lineItems: [],
@@ -149,7 +149,6 @@ const impl: OrderServiceShape = {
         return yield* Effect.fail(new OrderNotFoundError({ orderId }))
       }
 
-      // Deposit orders have no crossmintOrderId
       if (!local.crossmintOrderId) {
         return {
           orderId: local.id,

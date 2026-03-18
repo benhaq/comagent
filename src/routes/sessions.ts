@@ -211,7 +211,16 @@ export function createSessionRoutes(layer: Layer.Layer<ChatSessionService>) {
         taggedErrorToStatus(err._tag),
       ) as never;
     }
-    return c.json(result.right as any, 200);
+    // Transform DB rows → UIMessage-compatible shape
+    const { messages, ...session } = result.right;
+    const uiMessages = messages.map((m) => ({
+      id: m.msgId ?? m.id,  // prefer SDK msgId, fallback to DB UUID
+      role: m.role,
+      parts: m.parts,
+      createdAt: m.createdAt,
+    }));
+
+    return c.json({ ...session, messages: uiMessages } as any, 200);
   });
 
   app.openapi(renameSessionRoute, async (c) => {

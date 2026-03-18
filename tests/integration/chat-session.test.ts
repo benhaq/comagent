@@ -61,16 +61,27 @@ const mockConvertToModelMessages = mock(async (messages: any) =>
 )
 
 const mockStreamText = mock((...args: any[]) => {
-  const options = args[0]
-  if (options?.onFinish) {
-    setTimeout(() => options.onFinish({ text: "Mock assistant response" }), 10)
-  }
   return {
-    toUIMessageStreamResponse: () =>
-      new Response("mock stream", {
+    toUIMessageStreamResponse: (streamOpts?: any) => {
+      if (streamOpts?.onFinish) {
+        const originalMessages = streamOpts.originalMessages ?? []
+        const responseMessage = {
+          id: "mock-assistant-msg",
+          role: "assistant",
+          parts: [{ type: "text", text: "Mock assistant response" }],
+        }
+        setTimeout(() => {
+          streamOpts.onFinish({
+            messages: [...originalMessages, responseMessage],
+            responseMessage,
+          })
+        }, 10)
+      }
+      return new Response("mock stream", {
         status: 200,
         headers: { "Content-Type": "text/event-stream" },
-      }),
+      })
+    },
   }
 })
 
@@ -221,6 +232,9 @@ describe("POST /api/chat — auto-create session", () => {
     expect(res.status).toBe(200)
     const sessionId = res.headers.get("X-Session-Id")!
 
+    // Wait for async onFinish persistence
+    await new Promise((r) => setTimeout(r, 100))
+
     const msgs = await db
       .select()
       .from(chatMessages)
@@ -229,6 +243,7 @@ describe("POST /api/chat — auto-create session", () => {
     expect(msgs.length).toBeGreaterThanOrEqual(1)
     const userMsg = msgs.find((m) => m.role === "user")
     expect(userMsg).toBeDefined()
+    expect(Array.isArray(userMsg!.parts)).toBe(true)
   })
 })
 
@@ -282,6 +297,69 @@ describe("POST /api/chat — session reuse", () => {
 
     const userMsgs = msgs.filter((m) => m.role === "user")
     expect(userMsgs.length).toBeGreaterThanOrEqual(2)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tool results persistence
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("POST /api/chat — tool results persistence", () => {
+  it("persists tool results as parts in assistant message", async () => {
+    mockStreamText.mockImplementationOnce((...args: any[]) => {
+      return {
+        toUIMessageStreamResponse: (streamOpts?: any) => {
+          if (streamOpts?.onFinish) {
+            const originalMessages = streamOpts.originalMessages ?? []
+            const responseMessage = {
+              id: "mock-tool-msg",
+              role: "assistant",
+              parts: [
+                {
+                  type: "tool-searchProducts",
+                  toolCallId: "call-123",
+                  state: "output-available",
+                  input: { query: "sneakers" },
+                  output: { products: [{ id: "p1", name: "Nike Air" }], totalResults: 1, query: "sneakers" },
+                },
+                { type: "text", text: "Here are some sneakers!" },
+              ],
+            }
+            setTimeout(() => {
+              streamOpts.onFinish({
+                messages: [...originalMessages, responseMessage],
+                responseMessage,
+              })
+            }, 10)
+          }
+          return new Response("mock", { status: 200, headers: { "Content-Type": "text/event-stream" } })
+        },
+      }
+    })
+
+    await seedUser(FAKE_USER_A_CM_ID, FAKE_EMAIL_A, FAKE_WALLET_A, "wlt-a")
+    const app = buildApp()
+    const res = await app.request("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookieHeader() },
+      body: JSON.stringify({ messages: [{ role: "user", content: "Find me sneakers" }] }),
+    })
+    expect(res.status).toBe(200)
+    const sessionId = res.headers.get("X-Session-Id")!
+
+    await new Promise((r) => setTimeout(r, 100))
+
+    const msgs = await db.select().from(chatMessages).where(eq(chatMessages.sessionId, sessionId))
+    const assistantMsg = msgs.find((m) => m.role === "assistant")
+    expect(assistantMsg).toBeDefined()
+
+    const parts = assistantMsg!.parts as any[]
+    const toolPart = parts.find((p: any) => p.type === "tool-searchProducts")
+    expect(toolPart).toBeDefined()
+    expect(toolPart.output.products).toHaveLength(1)
+
+    const textPart = parts.find((p: any) => p.type === "text")
+    expect(textPart?.text).toBe("Here are some sneakers!")
   })
 })
 

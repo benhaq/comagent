@@ -23,8 +23,9 @@ export const ChatMessageSchema = z
   .object({
     id: z.string().uuid().openapi({ example: "b2c3d4e5-f6a7-8901-bcde-f12345678901" }),
     sessionId: z.string().uuid().openapi({ example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890" }),
+    msgId: z.string().nullable().openapi({ example: "msg_abc123" }),
     role: z.string().openapi({ example: "user" }),
-    content: z.unknown().openapi({ example: "What running shoes do you recommend?" }),
+    parts: z.unknown().openapi({ example: [{ type: "text", text: "What running shoes do you recommend?" }] }),
     createdAt: z.string().openapi({ example: "2026-03-16T10:01:00.000Z" }),
   })
   .openapi("ChatMessage")

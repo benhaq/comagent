@@ -42,9 +42,14 @@ export interface ChatSessionServiceShape {
   >;
   addMessage(
     sessionId: string,
+    msgId: string | undefined,
     role: string,
-    content: unknown,
+    parts: unknown,
   ): Effect.Effect<ChatMessage, DatabaseError>;
+  saveMessages(
+    sessionId: string,
+    messages: Array<{ id?: string; role: string; parts: unknown }>,
+  ): Effect.Effect<ChatMessage[], DatabaseError>;
   autoTitle(
     sessionId: string,
   ): Effect.Effect<string, DatabaseError | AIServiceError>;

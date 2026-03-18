@@ -393,7 +393,7 @@ describe("Cascade delete", () => {
     await db.insert(chatMessages).values({
       sessionId,
       role: "user",
-      content: { text: "Hello" },
+      parts: [{ type: "text", text: "Hello" }],
     })
 
     // Verify message exists

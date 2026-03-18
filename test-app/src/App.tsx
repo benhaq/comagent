@@ -35,6 +35,7 @@ export function App() {
   const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [sending, setSending] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
+  const [sessions, setSessions] = useState<Array<{ id: string; title: string | null; updatedAt: string }>>([])
 
   // Cart state
   const [cartItems, setCartItems] = useState<CartItemResponse[]>([])
@@ -74,6 +75,65 @@ export function App() {
     setTimeout(scrollToBottom, 50)
   }, [scrollToBottom])
 
+  const loadSessions = useCallback(async () => {
+    try {
+      const res = await fetch("/api/sessions?limit=10")
+      if (res.ok) {
+        const data = await res.json()
+        setSessions(data.sessions ?? [])
+      }
+    } catch {}
+  }, [])
+
+  const loadSession = useCallback(async (sid: string) => {
+    try {
+      const res = await fetch(`/api/sessions/${sid}`)
+      if (!res.ok) return
+      const data = await res.json()
+
+      const displayMsgs: DisplayMessage[] = []
+      const contextMsgs: ChatMessage[] = []
+
+      for (const msg of data.messages) {
+        if (!Array.isArray(msg.parts)) {
+          displayMsgs.push({ id: nextId(), role: msg.role, content: String(msg.parts) })
+          if (msg.role === "user" || msg.role === "assistant") {
+            contextMsgs.push({ role: msg.role, content: String(msg.parts) })
+          }
+          continue
+        }
+
+        for (const part of msg.parts) {
+          if (part.type === "text" && part.text) {
+            displayMsgs.push({ id: nextId(), role: msg.role, content: part.text })
+            if (msg.role === "user" || msg.role === "assistant") {
+              contextMsgs.push({ role: msg.role, content: part.text })
+            }
+          } else if (part.type === "tool-searchProducts" && part.output) {
+            const spec = buildProductGridSpec(part.output as ProductSearchResult)
+            displayMsgs.push({ id: nextId(), role: "assistant", content: "", spec: spec as any })
+          } else if (part.type === "tool-getProductDetails" && part.output) {
+            const spec = buildProductDetailSpec(part.output as ProductDetail)
+            displayMsgs.push({ id: nextId(), role: "assistant", content: "", spec: spec as any })
+          }
+        }
+      }
+
+      setMessages(displayMsgs)
+      conversationRef.current = contextMsgs
+      setSessionId(sid)
+    } catch (err) {
+      console.error("Failed to load session", err)
+    }
+  }, [])
+
+  const handleNewChat = useCallback(() => {
+    setMessages([])
+    setSessionId(null)
+    conversationRef.current = []
+    assistantAccRef.current = ""
+  }, [])
+
   const loadCart = useCallback(() => {
     setCartLoading(true)
     fetchCart()
@@ -93,9 +153,10 @@ export function App() {
         if (storedJwt) setCrossmintJwt(storedJwt)
         setLoggedIn(true)
         loadCart()
+        loadSessions()
       }
     }).catch(() => {})
-  }, [loadCart])
+  }, [loadCart, loadSessions])
 
   const handleLoggedIn = useCallback((email: string, jwt: string) => {
     setUserEmail(email)
@@ -103,7 +164,8 @@ export function App() {
     sessionStorage.setItem("crossmint_jwt", jwt)
     setLoggedIn(true)
     loadCart()
-  }, [loadCart])
+    loadSessions()
+  }, [loadCart, loadSessions])
 
   const handleLogout = useCallback(async () => {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {})
@@ -111,6 +173,7 @@ export function App() {
     setCartItems([])
     setMessages([])
     setSessionId(null)
+    setSessions([])
     setCheckoutItemId(null)
     setCrossmintJwt(null)
     sessionStorage.removeItem("crossmint_jwt")
@@ -223,7 +286,9 @@ export function App() {
     }
 
     setSending(false)
-  }, [input, sessionId, addMessage, updateLastAssistant])
+    // Refresh session list only when a new session was created or on first message
+    if (!sessionId || messages.length <= 1) loadSessions()
+  }, [input, sessionId, addMessage, updateLastAssistant, loadSessions])
 
   if (!loggedIn) {
     return (
@@ -259,6 +324,26 @@ export function App() {
                 >
                   Logout
                 </button>
+                {/* Session picker */}
+                <select
+                  value={sessionId ?? ""}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    if (val) loadSession(val)
+                    else handleNewChat()
+                  }}
+                  style={{
+                    background: "#0f3460", border: "1px solid #444", color: "#eee",
+                    padding: "6px 10px", borderRadius: 4, fontSize: 13, maxWidth: 200,
+                  }}
+                >
+                  <option value="">New Chat</option>
+                  {sessions.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.title ?? `Chat ${s.id.slice(0, 8)}`}
+                    </option>
+                  ))}
+                </select>
                 <div style={{ flex: 1 }} />
                 <button
                   onClick={() => { setOrdersOpen(!ordersOpen); if (!ordersOpen) setCartOpen(false) }}

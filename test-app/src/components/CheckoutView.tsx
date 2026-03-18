@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useWallet, type EVMWallet } from "@crossmint/client-sdk-react-ui"
+import { useWallet, EVMWallet } from "@crossmint/client-sdk-react-ui"
 import { checkout, getOrder, type CheckoutResponse, type OrderStatus } from "../lib/cart-api"
 
 type CheckoutStep = "preparing" | "approving" | "processing" | "completed" | "failed"
@@ -14,12 +14,12 @@ interface CheckoutViewProps {
 export function CheckoutView({ cartItemId, userEmail, onDone, onBack }: CheckoutViewProps) {
   const { wallet, getOrCreateWallet } = useWallet()
   const [step, setStep] = useState<CheckoutStep>("preparing")
-  const walletRef = useRef<EVMWallet | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [orderData, setOrderData] = useState<CheckoutResponse | null>(null)
   const [orderStatus, setOrderStatus] = useState<OrderStatus | null>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const startedRef = useRef(false)
 
   const cleanup = useCallback(() => {
     if (pollingRef.current) clearInterval(pollingRef.current)
@@ -55,18 +55,12 @@ export function CheckoutView({ cartItemId, userEmail, onDone, onBack }: Checkout
   }, [cleanup])
 
   const ensureWallet = useCallback(async (): Promise<EVMWallet> => {
-    if (walletRef.current) return walletRef.current
-    if (wallet) {
-      walletRef.current = wallet as EVMWallet
-      return wallet as EVMWallet
-    }
-    // Wallet not yet created — initialize it via SDK
-    const w = await getOrCreateWallet({
+    // Get or create the base wallet, then wrap as EVMWallet
+    const baseWallet = wallet ?? await getOrCreateWallet({
       chain: "base-sepolia",
       signer: { type: "email", email: userEmail },
     })
-    walletRef.current = w as EVMWallet
-    return w as EVMWallet
+    return EVMWallet.from(baseWallet)
   }, [wallet, getOrCreateWallet, userEmail])
 
   const handleCheckout = useCallback(async () => {
@@ -96,8 +90,10 @@ export function CheckoutView({ cartItemId, userEmail, onDone, onBack }: Checkout
     }
   }, [cartItemId, ensureWallet, startPolling])
 
-  // Auto-start checkout on mount
+  // Auto-start checkout on mount — guard against StrictMode double-fire
   useEffect(() => {
+    if (startedRef.current) return
+    startedRef.current = true
     handleCheckout()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -80,7 +80,7 @@ export function createDepositRoutes(layer: Layer.Layer<DepositService>) {
     const { amountPAS, transactionHash } = c.req.valid("json")
     const result = await runService(
       DepositService.pipe(
-        Effect.flatMap((s) => s.confirmDeposit(userId, amountPAS, transactionHash)),
+        Effect.flatMap((s) => s.confirmDeposit(userId, String(amountPAS), transactionHash)),
         Effect.provide(layer),
       ),
     )

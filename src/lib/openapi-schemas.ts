@@ -176,7 +176,8 @@ export const CheckoutResponseSchema = z
   .object({
     orderId: z.string().uuid().openapi({ example: "d1e2f3a4-b5c6-7890-defg-234567890123" }),
     crossmintOrderId: z.string().openapi({ example: "ed34a579-7fbc-4509-b8d8-9e61954cd555" }),
-    phase: z.string().openapi({ example: "payment" }),
+    phase: z.string().openapi({ example: "awaiting-approval" }),
+    serializedTransaction: z.string().openapi({ example: "0x..." }),
   })
   .openapi("CheckoutResponse")
 

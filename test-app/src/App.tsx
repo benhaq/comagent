@@ -27,6 +27,19 @@ interface DisplayMessage {
 let msgId = 0
 function nextId() { return ++msgId }
 
+// ─── Utilities ───────────────────────────────────────────────────────────────
+
+function extractSuggestions(text: string): { text: string; suggestions: string[] } {
+  const pattern = /\*\*Suggestions:\*\*\s*\r?\n((?:\s*[-*]\s*.+\r?\n?)+)/i
+  const match = text.match(pattern)
+  if (!match) return { text, suggestions: [] }
+  const suggestions = match[1]
+    .split(/\r?\n/)
+    .map(line => line.replace(/^\s*[-*]\s*/, '').trim())
+    .filter(Boolean)
+  return { text: text.slice(0, match.index).trimEnd(), suggestions }
+}
+
 // ─── App ────────────────────────────────────────────────────────────────────
 
 export function App() {
@@ -36,6 +49,7 @@ export function App() {
   const [sending, setSending] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [sessions, setSessions] = useState<Array<{ id: string; title: string | null; updatedAt: string }>>([])
+  const [suggestions, setSuggestions] = useState<string[]>([])
 
   // Cart state
   const [cartItems, setCartItems] = useState<CartItemResponse[]>([])
@@ -131,6 +145,7 @@ export function App() {
   const handleNewChat = useCallback(() => {
     setMessages([])
     setSessionId(null)
+    setSuggestions([])
     conversationRef.current = []
     assistantAccRef.current = ""
   }, [])
@@ -175,6 +190,7 @@ export function App() {
     setMessages([])
     setSessionId(null)
     setSessions([])
+    setSuggestions([])
     setCheckoutItemId(null)
     setHistoryOpen(false)
     setCrossmintJwt(null)
@@ -222,14 +238,11 @@ export function App() {
     setCheckoutItemId(null)
   }, [])
 
-  const handleSend = useCallback(async () => {
-    const text = input.trim()
-    if (!text) return
-
-    setInput("")
+  // Core send logic shared by handleSend and handleSuggestionClick
+  const doSend = useCallback(async (text: string) => {
     setSending(true)
+    setSuggestions([])
     addMessage({ role: "user", content: text })
-
     conversationRef.current.push({ role: "user", content: text })
     assistantAccRef.current = ""
 
@@ -264,11 +277,16 @@ export function App() {
         case "error":
           addMessage({ role: "error", content: evt.error })
           break
-        case "finish":
+        case "finish": {
           if (assistantAccRef.current) {
+            const { text: cleanText, suggestions: parsed } = extractSuggestions(assistantAccRef.current)
+            updateLastAssistant(cleanText)
+            setSuggestions(parsed)
+            // Push original text so LLM sees its own suggestions in history
             conversationRef.current.push({ role: "assistant", content: assistantAccRef.current })
           }
           break
+        }
       }
     }
 
@@ -289,8 +307,19 @@ export function App() {
 
     setSending(false)
     // Refresh session list only when a new session was created or on first message
-    if (!sessionId || messages.length <= 1) loadSessions()
-  }, [input, sessionId, addMessage, updateLastAssistant, loadSessions])
+    if (!sessionId) loadSessions()
+  }, [sessionId, addMessage, updateLastAssistant, loadSessions])
+
+  const handleSend = useCallback(async () => {
+    const text = input.trim()
+    if (!text) return
+    setInput("")
+    await doSend(text)
+  }, [input, doSend])
+
+  const handleSuggestionClick = useCallback((text: string) => {
+    void doSend(text)
+  }, [doSend])
 
   if (!loggedIn) {
     return (
@@ -416,6 +445,39 @@ export function App() {
                         </CartContext.Provider>
                         <div ref={messagesEndRef} />
                       </div>
+
+                      {/* Suggestion chips */}
+                      {suggestions.length > 0 && !sending && (
+                        <div style={{
+                          display: "flex",
+                          gap: 8,
+                          flexWrap: "wrap",
+                          padding: "8px 16px",
+                          alignSelf: "flex-start",
+                        }}>
+                          {suggestions.map((s, i) => (
+                            <button
+                              key={i}
+                              onClick={() => handleSuggestionClick(s)}
+                              style={{
+                                background: "#1e293b",
+                                border: "1px solid #334155",
+                                borderRadius: 20,
+                                padding: "6px 14px",
+                                color: "#94a3b8",
+                                cursor: "pointer",
+                                fontSize: 13,
+                                fontFamily: "inherit",
+                                transition: "background 0.15s",
+                              }}
+                              onMouseEnter={(e) => (e.currentTarget.style.background = "#334155")}
+                              onMouseLeave={(e) => (e.currentTarget.style.background = "#1e293b")}
+                            >
+                              ↳ {s}
+                            </button>
+                          ))}
+                        </div>
+                      )}
 
                       {/* Input bar */}
                       <div style={{

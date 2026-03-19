@@ -203,6 +203,68 @@ describe("GET /api/sessions/:id", () => {
     expect(Array.isArray(body.messages)).toBe(true)
     expect(body.messages).toHaveLength(0)
   })
+
+  it("returns messages with parts and msgId in UIMessage format", async () => {
+    const app = buildApp()
+    const createRes = await app.request("/api/sessions", {
+      method: "POST",
+      headers: { Cookie: validCookies(), "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    })
+    const { id: sessionId } = await createRes.json()
+
+    // Insert messages directly with parts + msg_id
+    await db.insert(chatMessages).values([
+      {
+        sessionId,
+        msgId: "user-msg-001",
+        role: "user",
+        parts: [{ type: "text", text: "Find me sneakers" }],
+      },
+      {
+        sessionId,
+        msgId: "assistant-msg-001",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-searchProducts",
+            toolCallId: "call-abc",
+            state: "output-available",
+            input: { query: "sneakers" },
+            output: { products: [{ id: "p1", name: "Nike Air" }], totalResults: 1, query: "sneakers" },
+          },
+          { type: "text", text: "Here are some sneakers!" },
+        ],
+      },
+    ])
+
+    const res = await app.request(`/api/sessions/${sessionId}`, {
+      headers: { Cookie: validCookies() },
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.messages).toHaveLength(2)
+
+    // Verify user message uses msgId as id
+    const userMsg = body.messages[0]
+    expect(userMsg.id).toBe("user-msg-001")
+    expect(userMsg.role).toBe("user")
+    expect(userMsg.parts).toEqual([{ type: "text", text: "Find me sneakers" }])
+
+    // Verify assistant message has tool results + text in parts
+    const assistantMsg = body.messages[1]
+    expect(assistantMsg.id).toBe("assistant-msg-001")
+    expect(assistantMsg.role).toBe("assistant")
+    expect(assistantMsg.parts).toHaveLength(2)
+
+    const toolPart = assistantMsg.parts.find((p: any) => p.type === "tool-searchProducts")
+    expect(toolPart).toBeDefined()
+    expect(toolPart.output.products).toHaveLength(1)
+    expect(toolPart.output.products[0].name).toBe("Nike Air")
+
+    const textPart = assistantMsg.parts.find((p: any) => p.type === "text")
+    expect(textPart.text).toBe("Here are some sneakers!")
+  })
 })
 
 describe("PATCH /api/sessions/:id", () => {
@@ -393,7 +455,7 @@ describe("Cascade delete", () => {
     await db.insert(chatMessages).values({
       sessionId,
       role: "user",
-      content: { text: "Hello" },
+      parts: [{ type: "text", text: "Hello" }],
     })
 
     // Verify message exists

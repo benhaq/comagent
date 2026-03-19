@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { streamText, convertToModelMessages, stepCountIs, type UIMessage } from "ai";
+import { streamText, convertToModelMessages, stepCountIs, createIdGenerator, type UIMessage } from "ai";
 import { model } from "../lib/model.js";
 import { Effect, Layer } from "effect";
 import { systemPrompt } from "../lib/chat-system-prompt.js";
@@ -16,15 +16,13 @@ import {
 } from "../lib/openapi-schemas.js";
 
 // ---------------------------------------------------------------------------
-// Helper: convert plain {role, content} to UIMessage parts format for AI SDK v6
+// Helper: convert DB parts or plain content → UIMessage for AI SDK v6
 // ---------------------------------------------------------------------------
 
-let msgCounter = 0
-function toUIMessage(role: string, content: unknown): UIMessage {
-  // If content is an array of UIMessage parts, convert to v6 format if needed
-  if (Array.isArray(content) && content.length > 0 && content[0]?.type) {
-    const parts = content.map((p: any) => {
-      // Convert v5 "tool-invocation" format to v6 "tool-{toolName}" format
+function toUIMessage(msgId: string | null, role: string, parts: unknown): UIMessage {
+  const id = msgId ?? crypto.randomUUID()
+  if (Array.isArray(parts) && parts.length > 0 && parts[0]?.type) {
+    const converted = parts.map((p: any) => {
       if (p.type === "tool-invocation" && p.toolInvocation) {
         const ti = p.toolInvocation
         return {
@@ -37,16 +35,12 @@ function toUIMessage(role: string, content: unknown): UIMessage {
       }
       return p
     })
-    return {
-      id: `msg-${++msgCounter}`,
-      role: role as UIMessage["role"],
-      parts,
-    }
+    return { id, role: role as UIMessage["role"], parts: converted }
   }
   return {
-    id: `msg-${++msgCounter}`,
+    id,
     role: role as UIMessage["role"],
-    parts: [{ type: "text", text: typeof content === "string" ? content : JSON.stringify(content) }],
+    parts: [{ type: "text", text: typeof parts === "string" ? parts : JSON.stringify(parts) }],
   }
 }
 
@@ -57,6 +51,7 @@ function toUIMessage(role: string, content: unknown): UIMessage {
 const messageSchema = z
   .object({
     role: z.enum(["user", "assistant", "system", "data"]),
+    content: z.unknown(),
   })
   .passthrough();
 
@@ -123,10 +118,9 @@ export function createChatRoute(
     // Session resolution
     // ------------------------------------------------------------------
     let sessionId: string;
-    let existingMessages: Array<{ role: string; content: unknown }> = [];
+    let existingUIMessages: UIMessage[] = [];
 
     if (!reqSessionId) {
-      // Auto-create a new session
       const createResult = await runSession(
         ChatSessionService.pipe(Effect.flatMap((s) => s.create(userId))),
       );
@@ -140,7 +134,6 @@ export function createChatRoute(
       }
       sessionId = createResult.right.id;
     } else {
-      // Validate ownership and load existing messages
       const getResult = await runSession(
         ChatSessionService.pipe(
           Effect.flatMap((s) => s.getWithMessages(reqSessionId, userId)),
@@ -157,44 +150,25 @@ export function createChatRoute(
         return c.json({ error: "Session error", code: err._tag }, 500);
       }
       sessionId = reqSessionId;
-      existingMessages = getResult.right.messages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
-    }
-
-    // ------------------------------------------------------------------
-    // Persist the latest user message
-    // ------------------------------------------------------------------
-    const lastMsg = messages[messages.length - 1];
-    const persistUserResult = await runSession(
-      ChatSessionService.pipe(
-        Effect.flatMap((s) =>
-          s.addMessage(sessionId, lastMsg.role as string, lastMsg.content),
-        ),
-      ),
-    );
-    if (persistUserResult._tag === "Left") {
-      logger.warn(
-        { err: persistUserResult.left, sessionId },
-        "Failed to persist user message",
+      existingUIMessages = getResult.right.messages.map((m) =>
+        toUIMessage(m.msgId ?? null, m.role, m.parts),
       );
     }
 
     // ------------------------------------------------------------------
-    // Build model message history: DB history + latest user message
-    // AI SDK v6 convertToModelMessages expects UIMessage[] with parts array
+    // Build UIMessage array: DB history + new user message
     // ------------------------------------------------------------------
-    const uiMessages: UIMessage[] =
-      existingMessages.length > 0
-        ? [
-            ...existingMessages.map((m) => toUIMessage(m.role, m.content)),
-            toUIMessage(lastMsg.role as string, lastMsg.content),
-          ]
-        : messages.map((m) => toUIMessage(m.role as string, m.content));
-    const modelMessages = await convertToModelMessages(uiMessages, {
-      ignoreIncompleteToolCalls: true,
-    });
+
+    const generateMessageId = createIdGenerator({ prefix: "msg", size: 16 });
+
+    const lastMsg = messages[messages.length - 1];
+    const rawContent = (lastMsg as any).content ?? "";
+    const userUIMessage: UIMessage = {
+      id: generateMessageId(),
+      role: "user",
+      parts: [{ type: "text", text: typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent) }],
+    };
+    const allUIMessages = [...existingUIMessages, userUIMessage];
 
     // ------------------------------------------------------------------
     // Stream LLM response
@@ -202,10 +176,11 @@ export function createChatRoute(
     const result = streamText({
       model,
       system: systemPrompt,
-      messages: modelMessages,
+      messages: await convertToModelMessages(allUIMessages, { ignoreIncompleteToolCalls: true }),
       tools,
       stopWhen: stepCountIs(3),
       onStepFinish: async ({ toolCalls, toolResults }) => {
+        // LOGGING ONLY — persistence handled in toUIMessageStreamResponse.onFinish
         for (const tc of toolCalls as any[]) {
           logger.info(
             { sessionId, tool: tc.toolName, toolCallId: tc.toolCallId, args: tc.args },
@@ -213,54 +188,42 @@ export function createChatRoute(
           )
         }
         for (const tr of toolResults as any[]) {
-          const result = tr.result
-          const productCount = result?.products?.length ?? result?.id ? 1 : 0
+          const r = tr.result
+          const productCount = r?.products?.length ?? (r?.id ? 1 : 0)
           logger.info(
-            {
-              sessionId,
-              tool: tr.toolName,
-              toolCallId: tr.toolCallId,
-              productCount,
-              totalResults: result?.totalResults,
-              resultPreview: JSON.stringify(result).slice(0, 500),
-            },
-            `Tool result: ${tr.toolName} → ${productCount} product(s)`,
+            { sessionId, tool: tr.toolName, toolCallId: tr.toolCallId, productCount },
+            `Tool result: ${tr.toolName}`,
           )
         }
-
-        // Persist tool call + result as an assistant message with tool-invocation parts
-        // so the LLM retains full tool context on follow-up messages
-        if (toolCalls.length > 0) {
-          try {
-            const parts = toolCalls.map((tc: any, i: number) => ({
-              type: `tool-${tc.toolName}`,
-              toolCallId: tc.toolCallId,
-              state: "output-available",
-              input: tc.args ?? {},
-              output: (toolResults[i] as any)?.result ?? null,
-            }))
-            await Effect.runPromise(
-              ChatSessionService.pipe(
-                Effect.flatMap((s) => s.addMessage(sessionId, "assistant", parts)),
-                Effect.provide(sessionServiceLayer),
-              ),
-            )
-          } catch (err) {
-            logger.warn({ err, sessionId }, "Failed to persist tool step messages")
-          }
-        }
       },
-      onFinish: async ({ text }) => {
+    });
+
+    // ------------------------------------------------------------------
+    // Return stream — persist all messages atomically in onFinish
+    // ------------------------------------------------------------------
+    const response = result.toUIMessageStreamResponse({
+      originalMessages: allUIMessages,
+      generateMessageId,
+      onFinish: async ({ messages: finalMessages }) => {
         try {
+          // New messages = everything after the original history + user message
+          const newMessages = finalMessages.slice(allUIMessages.length);
+          const toPersist = [userUIMessage, ...newMessages];
+
           await Effect.runPromise(
             ChatSessionService.pipe(
-              Effect.flatMap((s) => s.addMessage(sessionId, "assistant", text)),
+              Effect.flatMap((s) =>
+                s.saveMessages(
+                  sessionId,
+                  toPersist.map((m) => ({ id: m.id, role: m.role, parts: m.parts })),
+                ),
+              ),
               Effect.provide(sessionServiceLayer),
             ),
           );
 
-          // Auto-title on first exchange (user + assistant = 2 messages persisted)
-          const totalMessages = existingMessages.length + 2;
+          // Auto-title on first exchange
+          const totalMessages = existingUIMessages.length + toPersist.length;
           if (totalMessages <= 2) {
             await Effect.runPromise(
               ChatSessionService.pipe(
@@ -271,16 +234,11 @@ export function createChatRoute(
             );
           }
         } catch (err) {
-          logger.error(
-            { err, sessionId },
-            "Failed to persist assistant message",
-          );
+          logger.error({ err, sessionId }, "Failed to persist messages");
         }
       },
     });
 
-    // Set session ID header so client can track it
-    const response = result.toUIMessageStreamResponse();
     response.headers.set("X-Session-Id", sessionId);
     return response;
   });

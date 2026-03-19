@@ -6,6 +6,7 @@ import { db } from "../db/client.js"
 import { chatSessions } from "../db/schema/chat-sessions.js"
 import { chatMessages } from "../db/schema/chat-messages.js"
 import { DatabaseError, SessionNotFound, SessionOwnershipError, AIServiceError } from "../lib/errors.js"
+import { extractTextFromParts } from "../lib/message-utils.js"
 import { ChatSessionService } from "./chat-session-service.js"
 import type { ChatSession } from "../db/schema/chat-sessions.js"
 
@@ -115,18 +116,26 @@ const impl: import("./chat-session-service.js").ChatSessionServiceShape = {
       Effect.map(() => undefined),
     ),
 
-  addMessage: (sessionId, role, content) =>
+  addMessage: (sessionId, msgId, role, parts) =>
     Effect.tryPromise({
       try: async () => {
-        const [message] = await db
-          .insert(chatMessages)
-          .values({ sessionId, role, content })
-          .returning()
-        await db
-          .update(chatSessions)
-          .set({ updatedAt: new Date() })
-          .where(eq(chatSessions.id, sessionId))
+        const [[message]] = await Promise.all([
+          db.insert(chatMessages).values({ sessionId, msgId: msgId ?? null, role, parts }).returning(),
+          db.update(chatSessions).set({ updatedAt: new Date() }).where(eq(chatSessions.id, sessionId)),
+        ])
         return message
+      },
+      catch: dbError,
+    }),
+
+  saveMessages: (sessionId, messages) =>
+    Effect.tryPromise({
+      try: async () => {
+        const [rows] = await Promise.all([
+          db.insert(chatMessages).values(messages.map((m) => ({ sessionId, msgId: m.id ?? null, role: m.role, parts: m.parts }))).returning(),
+          db.update(chatSessions).set({ updatedAt: new Date() }).where(eq(chatSessions.id, sessionId)),
+        ])
+        return rows
       },
       catch: dbError,
     }),
@@ -146,7 +155,7 @@ const impl: import("./chat-session-service.js").ChatSessionServiceShape = {
         Effect.tryPromise({
           try: async () => {
             const preview = messages
-              .map((m) => `${m.role}: ${JSON.stringify(m.content)}`)
+              .map((m) => `${m.role}: ${extractTextFromParts(m.parts)}`)
               .join("\n")
             const { text } = await generateText({
               model,

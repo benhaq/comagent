@@ -8,8 +8,9 @@ export const chatMessages = pgTable(
     sessionId: uuid("session_id")
       .notNull()
       .references(() => chatSessions.id, { onDelete: "cascade" }),
-    role: varchar("role", { length: 10 }).notNull(), // 'user' | 'assistant' | 'system'
-    content: jsonb("content").notNull(), // message.parts[] as JSONB
+    msgId: varchar("msg_id", { length: 100 }), // UIMessage.id from AI SDK
+    role: varchar("role", { length: 20 }).notNull(), // 'user' | 'assistant' | 'system' | 'tool'
+    parts: jsonb("parts").notNull(), // UIMessage.parts[] as JSONB
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => [

@@ -151,8 +151,8 @@ export const AddCartItemSchema = z
     productName: z.string().min(1).max(500),
     price: z.number().int().positive(),
     image: z.string().url(),
-    size: z.string().min(1).max(50),
-    color: z.string().min(1).max(50),
+    size: z.string().max(50).default("Default"),
+    color: z.string().max(50).default("Default"),
     productUrl: z.string().url(),
     retailer: z.string().min(1).max(255),
   })

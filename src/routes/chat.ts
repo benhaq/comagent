@@ -1,5 +1,5 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { streamText, convertToModelMessages, stepCountIs, type UIMessage } from "ai";
+import { streamText, convertToModelMessages, stepCountIs, createIdGenerator, type UIMessage } from "ai";
 import { model } from "../lib/model.js";
 import { Effect, Layer } from "effect";
 import { systemPrompt } from "../lib/chat-system-prompt.js";
@@ -199,8 +199,10 @@ export function createChatRoute(
     // ------------------------------------------------------------------
     // Return stream — persist all messages atomically in onFinish
     // ------------------------------------------------------------------
+    const generateMessageId = createIdGenerator({ prefix: "msg", size: 16 });
     const response = result.toUIMessageStreamResponse({
       originalMessages: allUIMessages,
+      generateMessageId,
       onFinish: async ({ messages: finalMessages }) => {
         try {
           // New messages = everything after the original history + user message

@@ -42,8 +42,9 @@ export function App() {
   const [cartLoading, setCartLoading] = useState(false)
   const [cartOpen, setCartOpen] = useState(false)
 
-  // Orders panel state
+  // Orders / history panel state
   const [ordersOpen, setOrdersOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   // Checkout state
   const [checkoutItemId, setCheckoutItemId] = useState<string | null>(null)
@@ -175,6 +176,7 @@ export function App() {
     setSessionId(null)
     setSessions([])
     setCheckoutItemId(null)
+    setHistoryOpen(false)
     setCrossmintJwt(null)
     sessionStorage.removeItem("crossmint_jwt")
     conversationRef.current = []
@@ -324,26 +326,24 @@ export function App() {
                 >
                   Logout
                 </button>
-                {/* Session picker */}
-                <select
-                  value={sessionId ?? ""}
-                  onChange={(e) => {
-                    const val = e.target.value
-                    if (val) loadSession(val)
-                    else handleNewChat()
-                  }}
+                <button
+                  onClick={handleNewChat}
                   style={{
-                    background: "#0f3460", border: "1px solid #444", color: "#eee",
-                    padding: "6px 10px", borderRadius: 4, fontSize: 13, maxWidth: 200,
+                    background: "#0f3460", border: "1px solid #444", color: "#4ade80",
+                    padding: "6px 14px", borderRadius: 4, fontSize: 13, cursor: "pointer",
                   }}
                 >
-                  <option value="">New Chat</option>
-                  {sessions.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.title ?? `Chat ${s.id.slice(0, 8)}`}
-                    </option>
-                  ))}
-                </select>
+                  + New Chat
+                </button>
+                <button
+                  onClick={() => { setHistoryOpen(!historyOpen); if (!historyOpen) { setCartOpen(false); setOrdersOpen(false) } }}
+                  style={{
+                    background: historyOpen ? "#1e40af" : "#0f3460", border: "1px solid #444", color: "#eee",
+                    padding: "6px 14px", borderRadius: 4, fontSize: 13, cursor: "pointer",
+                  }}
+                >
+                  History ({sessions.length})
+                </button>
                 <div style={{ flex: 1 }} />
                 <button
                   onClick={() => { setOrdersOpen(!ordersOpen); if (!ordersOpen) setCartOpen(false) }}
@@ -461,6 +461,37 @@ export function App() {
                 )}
                 {ordersOpen && (
                   <OrdersPanel onClose={() => setOrdersOpen(false)} />
+                )}
+                {historyOpen && (
+                  <div style={{
+                    width: 300, borderLeft: "1px solid #333", background: "#16213e",
+                    overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 8,
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <span style={{ fontSize: 14, fontWeight: 600 }}>Chat History</span>
+                      <button onClick={() => setHistoryOpen(false)} style={{ background: "none", border: "none", color: "#888", cursor: "pointer", fontSize: 16 }}>×</button>
+                    </div>
+                    {sessions.length === 0 && <span style={{ color: "#666", fontSize: 13 }}>No sessions yet</span>}
+                    {sessions.map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => { loadSession(s.id); setHistoryOpen(false) }}
+                        style={{
+                          background: s.id === sessionId ? "#1e40af" : "#0f3460",
+                          border: s.id === sessionId ? "1px solid #3b82f6" : "1px solid #333",
+                          color: "#eee", padding: "10px 12px", borderRadius: 8,
+                          cursor: "pointer", textAlign: "left", width: "100%",
+                        }}
+                      >
+                        <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>
+                          {s.title ?? `Chat ${s.id.slice(0, 8)}...`}
+                        </div>
+                        <div style={{ fontSize: 11, color: "#888" }}>
+                          {new Date(s.updatedAt).toLocaleString()}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 )}
               </div>
             </div>

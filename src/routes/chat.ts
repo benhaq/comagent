@@ -159,10 +159,12 @@ export function createChatRoute(
     // Build UIMessage array: DB history + new user message
     // ------------------------------------------------------------------
 
+    const generateMessageId = createIdGenerator({ prefix: "msg", size: 16 });
+
     const lastMsg = messages[messages.length - 1];
     const rawContent = (lastMsg as any).content ?? "";
     const userUIMessage: UIMessage = {
-      id: crypto.randomUUID(),
+      id: generateMessageId(),
       role: "user",
       parts: [{ type: "text", text: typeof rawContent === "string" ? rawContent : JSON.stringify(rawContent) }],
     };
@@ -199,7 +201,6 @@ export function createChatRoute(
     // ------------------------------------------------------------------
     // Return stream — persist all messages atomically in onFinish
     // ------------------------------------------------------------------
-    const generateMessageId = createIdGenerator({ prefix: "msg", size: 16 });
     const response = result.toUIMessageStreamResponse({
       originalMessages: allUIMessages,
       generateMessageId,
